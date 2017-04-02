@@ -39,7 +39,7 @@ func (ts *todoserver) handleHealthcheck(w http.ResponseWriter, r *http.Request) 
 		endpoints = append(endpoints, ep)
 	}
 	m := map[string]interface{}{
-		"ok":        true,
+		"ok":	     true,
 		"endpoints": endpoints,
 	}
 	io.WriteString(w, util.ToJSON(m))
@@ -171,7 +171,7 @@ func (ts *todoserver) handleWebAdd(w http.ResponseWriter, r *http.Request) {
 	if !parseFormDataAndLog(w, r) {
 		return
 	}
-	io.WriteString(w, fmt.Sprintf(`<html><a href="getall">Get</a><br><br>
+	io.WriteString(w, fmt.Sprintf(`<!DOCTYPE html><html><a href="getall">Get</a><br><br>
   <form action="http://%s:%d/web/add_redirect">
     <input type="text" name="item"><br>
     <input type="text" name="item"><br>
@@ -228,13 +228,22 @@ func (ts *todoserver) handleWebGetAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	html := "<html>"
+	html := "<!DOCTYPE html><html>"
 	html += `<a href="add">Add</a><br><br>`
+	html +=`<style>
+	table { width: 100%; font-family: Arial, Helvetica, sans-serif; color: #3C2915; }
+	table th { border: 1px solid #00878F; font-family: "Courier New", Courier, monospace; font-size: 12pt ; padding: 8px 8px 8px 8px ; }
+	table td { background-color: #F0F0F0; }
+	table td.prio { width: 5%; }
+	table td.item { width: 60%; background-color: #FFFFFF; }
+	table td.created { width: 10%; }
+	table td.due { width: 10%; }
+	</style>`
 
-	listnames := ts.collection.Names()
-	sort.Strings(listnames)
+	listNames := ts.collection.Names()
+	sort.Strings(listNames)
 
-	for _, listName := range listnames {
+	for _, listName := range listNames {
 		lst := ts.collection.GetList(listName)
 		if lst == nil {
 			continue
@@ -244,6 +253,13 @@ func (ts *todoserver) handleWebGetAll(w http.ResponseWriter, r *http.Request) {
 		sort.Sort(list.ByItem(items))
 		sort.Sort(list.ByPriority(items))
 		html += fmt.Sprintf("%s<hr><table>", listName)
+		html += `<tr>
+				<th>Prio</th>
+				<th>Item</th>
+				<th>Created</th>
+				<th>Due</th>
+				<th>Edit</th>
+			</tr>`
 		for _, item := range items {
 
 			removeButton := fmt.Sprintf(`<form action="http://%s:%d/web/remove_redirect">
@@ -252,11 +268,11 @@ func (ts *todoserver) handleWebGetAll(w http.ResponseWriter, r *http.Request) {
 			<input type="submit" value="rm"></form>`, ts.host, ts.port, url.QueryEscape(listName), url.QueryEscape(item.Item))
 
 			html += fmt.Sprintf(`<tr>
-						<td>%d</td>
-						<td>%s</td>
-						<td>%s</td>
-						<td>%s</td>
-						<td>%s</td>
+						<td class="prio">%d</td>
+						<td class="item">%s</td>
+						<td class="created">%s</td>
+						<td class="due">%s</td>
+						<td class="edit">%s</td>
 					    </tr>`,
 				item.Priority, item.Item, item.CreatedAtDateString(), item.DueDateString(), removeButton)
 		}
@@ -269,12 +285,12 @@ func parseFormDataAndLog(w http.ResponseWriter, r *http.Request) bool {
 	err := r.ParseForm()
 
 	log.Println(util.ToJSON(map[string]interface{}{
-		"Date":       time.Now().Unix(),
-		"Host":       r.Host,
+		"Date":	      time.Now().Unix(),
+		"Host":	      r.Host,
 		"RemoteAddr": r.RemoteAddr,
-		"URL":        r.URL.String(),
+		"URL":	      r.URL.String(),
 		"PostForm":   r.PostForm,
-		"Form":       r.Form,
+		"Form":	      r.Form,
 	}))
 
 	if err != nil {
