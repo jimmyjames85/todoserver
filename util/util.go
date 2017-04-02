@@ -8,10 +8,6 @@ import (
 	"time"
 )
 
-func logf(format string, a ...interface{}) {
-	fmt.Printf("%s: %s\n", time.Now().String(), fmt.Sprintf(format, a...))
-}
-
 func ToJSON(obj interface{}) string {
 	b, err := json.Marshal(obj)
 	if err != nil {
@@ -31,4 +27,15 @@ func ToBase64(data string) string {
 		out.WriteByte('\n')
 	}
 	return out.String()
+}
+
+func ReadStringTrimDelim(buf *bytes.Buffer, delim byte) (string, error){
+	line, err := buf.ReadString(delim)
+	if err != nil {
+		return line, err
+	}
+	// this is safe because the delimiter is guaranteed
+	// to be in line. See bytes.Buffer.ReadString
+	line = line[:len(line)-1]
+	return line, err
 }

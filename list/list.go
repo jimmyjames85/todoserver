@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 
 	"bytes"
-	"io/ioutil"
 
 	"github.com/jimmyjames85/todoserver/util"
 )
@@ -23,81 +22,45 @@ type List interface {
 	Serialize() string
 }
 
-type Collective map[string]List
+const serialDelimiter = byte(0)
 
-//TODO rename to savetodisk and return err ... i.e. this is for testing
-func (c Collective) Serialize() []byte {
+type Collection map[string]List
+
+func (c Collection) Serialize() []byte {
 	var buf bytes.Buffer
 	for listName, list := range c {
 		buf.WriteString(util.ToBase64(listName))
-		buf.WriteByte(0)
+		buf.WriteByte(serialDelimiter)
 		buf.WriteString(list.Serialize())
-		buf.WriteByte(0)
-		buf.WriteByte(0)
+		buf.WriteByte(serialDelimiter)
 	}
-	ioutil.WriteFile("/tmp/test1234", buf.Bytes(), 0644)
 	return buf.Bytes()
 }
 
-type list struct {
-	data map[string]Item
-}
-
-func (c Collective) Keys() []string {
-	ret := make([]string, 0)
-	for key, _ := range c {
-		ret = append(ret, key)
-	}
-	return ret
-}
-
-func (c Collective) GetOrCreateList(listName string) List {
-	if _, ok := c[listName]; !ok {
-		c[listName] = NewList()
-	}
-	return c[listName]
-}
-
-func (c Collective) Names() []string {
-	var ret []string
-	for name := range c {
-		ret = append(ret, name)
-	}
-	return ret
-}
-
-func (c Collective) GetList(listName string) List {
-	l, ok := c[listName]
-	if !ok {
-		return nil
-	}
-	return l
-}
-
-func (c Collective) SubSet(listNames ...string) Collective {
+func DeserializeCollection(c []byte) (Collection, error) {
 	ret := make(map[string]List)
-
-	for _, listName := range listNames {
-		if l := c.GetList(listName); l != nil {
-			ret[listName] = l
+	buf := bytes.NewBuffer(c)
+	readingName := true
+	var name []byte
+	for line, err := util.ReadStringTrimDelim(buf, serialDelimiter); err == nil; line, err = util.ReadStringTrimDelim(buf, serialDelimiter) {
+		if readingName {
+			name, err = base64.StdEncoding.DecodeString(line)
+			if err != nil {
+				return ret, err
+			}
+		} else {
+			lst, err := DeserializeList(line)
+			if err != nil {
+				return ret, err
+			}
+			ret[string(name)] = lst
 		}
+		readingName = !readingName
 	}
-	return ret
+	return ret, nil
 }
 
-func (c Collective) ToJSON() string {
-	m := make(map[string][]Item)
-	for lname, lst := range c {
-		m[lname] = lst.Items()
-	}
-	return util.ToJSON(m)
-}
-
-func (l list) Serialize() string {
-	return util.ToBase64(util.ToJSON(l.data))
-}
-
-func Deserialize(serializedList string) (list, error) {
+func DeserializeList(serializedList string) (list, error) {
 	ret := NewList()
 	jsonBytes, err := base64.StdEncoding.DecodeString(serializedList)
 	if err != nil {
@@ -112,6 +75,64 @@ func Deserialize(serializedList string) (list, error) {
 
 	ret.data = data
 	return ret, nil
+}
+
+type list struct {
+	data map[string]Item
+}
+
+func (c Collection) Keys() []string {
+	ret := make([]string, 0)
+	for key, _ := range c {
+		ret = append(ret, key)
+	}
+	return ret
+}
+
+func (c Collection) GetOrCreateList(listName string) List {
+	if _, ok := c[listName]; !ok {
+		c[listName] = NewList()
+	}
+	return c[listName]
+}
+
+func (c Collection) Names() []string {
+	var ret []string
+	for name := range c {
+		ret = append(ret, name)
+	}
+	return ret
+}
+
+func (c Collection) GetList(listName string) List {
+	l, ok := c[listName]
+	if !ok {
+		return nil
+	}
+	return l
+}
+
+func (c Collection) SubSet(listNames ...string) Collection {
+	ret := make(map[string]List)
+
+	for _, listName := range listNames {
+		if l := c.GetList(listName); l != nil {
+			ret[listName] = l
+		}
+	}
+	return ret
+}
+
+func (c Collection) ToJSON() string {
+	m := make(map[string][]Item)
+	for lname, lst := range c {
+		m[lname] = lst.Items()
+	}
+	return util.ToJSON(m)
+}
+
+func (l list) Serialize() string {
+	return util.ToBase64(util.ToJSON(l.data))
 }
 
 func NewList() list {
