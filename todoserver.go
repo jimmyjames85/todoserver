@@ -3,11 +3,10 @@ package todoserver
 import (
 	"fmt"
 	"io/ioutil"
-	"net/http"
-	"time"
-
 	"log"
+	"net/http"
 	"os"
+	"time"
 
 	"github.com/jimmyjames85/todoserver/list"
 )
@@ -29,7 +28,7 @@ func NewTodoServer(host string, port int, pass, savefile string, saveFrequency t
 		pass:          pass,
 		saveFile:      savefile,
 		saveFrequency: saveFrequency,
-		collection:    make(map[string]list.List),
+		collection:    list.NewCollection(),
 	}
 	return c
 }
@@ -38,37 +37,21 @@ func NewTodoServer(host string, port int, pass, savefile string, saveFrequency t
 func (ts *todoserver) Serve() error {
 
 	ts.endpoints = map[string]func(http.ResponseWriter, *http.Request){
-		"/todo/web/add":             ts.handleWebAdd,
-		"/todo/web/add_redirect":    ts.handleWebAddWithRedirect,
-		"/todo/web/remove_redirect": ts.handleWebRemoveWithRedirect,
-		"/todo/web/getall":          ts.handleWebGetAll,
-		"/test":                     ts.handleTest,
-		"/todo/add":                 ts.handleListAdd,
-		"/todo/get":                 ts.handleListGet,
-		"/todo/getall":              ts.handleListGetAll,
-		"/todo/remove":              ts.handleListRemove,
-		"/todo/save":                ts.handleSaveListsToDisk,   //todo save on every modification (shrug)
-		"/todo/load":                ts.handleLoadListsFromDisk, //todo remove why do we need this
-		"/healthcheck":              ts.handleHealthcheck,
+		"/add":                 ts.handleListAdd, //todo save on every modification (shrug)
+		"/get":                 ts.handleListGet,
+		"/getall":              ts.handleListGetAll,
+		"/remove":              ts.handleListRemove,
+		"/web/add":             ts.handleWebAdd,
+		"/web/add_redirect":    ts.handleWebAddWithRedirect,
+		"/web/remove_redirect": ts.handleWebRemoveWithRedirect,
+		"/web/getall":          ts.handleWebGetAll,
+		"/healthcheck":         ts.handleHealthcheck,
+		//"/test":                     ts.handleTest,
 	}
 
 	for ep, fn := range ts.endpoints {
 		http.HandleFunc(ep, fn)
 	}
-	//
-	//
-	//http.HandleFunc("/todo/web/add", ts.handleWebAdd)
-	//http.HandleFunc("/todo/web/add_redirect", ts.handleWebAddWithRedirect)
-	//http.HandleFunc("/todo/web/remove_redirect", ts.handleWebRemoveWithRedirect)
-	//http.HandleFunc("/todo/web/getall", ts.handleWebGetAll)
-	//http.HandleFunc("/test", ts.handleTest)
-	//http.HandleFunc("/todo/add", ts.handleListAdd)
-	//http.HandleFunc("/todo/get", ts.handleListGet)
-	//http.HandleFunc("/todo/getall", ts.handleListGetAll)
-	//http.HandleFunc("/todo/remove", ts.handleListRemove)
-	//http.HandleFunc("/todo/save", ts.handleSaveListsToDisk) //todo save on every modification (shrug)
-	//http.HandleFunc("/todo/load", ts.handleLoadListsFromDisk) //todo remove why do we need this
-	//http.HandleFunc("/healthcheck", ts.handleHealthcheck)
 
 	if _, err := os.Stat(ts.saveFile); err == nil {
 		err := ts.loadFromDisk()

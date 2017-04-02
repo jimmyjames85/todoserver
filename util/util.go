@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"time"
 )
 
 func ToJSON(obj interface{}) string {
@@ -29,7 +28,7 @@ func ToBase64(data string) string {
 	return out.String()
 }
 
-func ReadStringTrimDelim(buf *bytes.Buffer, delim byte) (string, error){
+func ReadStringTrimDelim(buf *bytes.Buffer, delim byte) (string, error) {
 	line, err := buf.ReadString(delim)
 	if err != nil {
 		return line, err
