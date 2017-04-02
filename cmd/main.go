@@ -23,10 +23,16 @@ type config struct {
 
 func main() {
 
+	var c list.Collective
+	c = make(map[string]list.List)
+	peeps := c.GetOrCreateList("peeps")
+	peeps.AddItems("jimbo", "rikki", "mateo", "buddy", "mama", "pops")
+
+	german := c.GetOrCreateList("WeinerSchnitzell")
+	german.AddItems("haubschrauberlandenplatz", "wie geht ist dir", "ich bin eine dumbkompf")
+
+	fmt.Printf(string(c.Serialize()))
 	return
-	myList := list.NewList()
-	myList.AddItems("jimbo", "rikki", "mateo", "buddy", "mama", "pops")
-	myList.Serialize()
 
 	b := []byte("here\x00'sjohnie\n")
 	for _, c := range b{

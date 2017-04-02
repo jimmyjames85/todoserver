@@ -6,6 +6,9 @@ import (
 
 	"encoding/json"
 
+	"bytes"
+	"io/ioutil"
+
 	"github.com/jimmyjames85/todoserver/util"
 )
 
@@ -21,6 +24,20 @@ type List interface {
 }
 
 type Collective map[string]List
+
+//TODO rename to savetodisk and return err ... i.e. this is for testing
+func (c Collective) Serialize() []byte {
+	var buf bytes.Buffer
+	for listName, list := range c {
+		buf.WriteString(util.ToBase64(listName))
+		buf.WriteByte(0)
+		buf.WriteString(list.Serialize())
+		buf.WriteByte(0)
+		buf.WriteByte(0)
+	}
+	ioutil.WriteFile("/tmp/test1234", buf.Bytes(), 0644)
+	return buf.Bytes()
+}
 
 type list struct {
 	data map[string]Item
