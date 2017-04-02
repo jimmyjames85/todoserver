@@ -1,21 +1,21 @@
 package todoserver
 
 import (
+	"errors"
 	"fmt"
 	"io"
-	"net/http"
-
 	"log"
+	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/jimmyjames85/todoserver/list"
 	"github.com/jimmyjames85/todoserver/util"
-	"errors"
 )
 
-const defaultlist = ""
+const defaultList = ""
 const listDelim = "::"
 
 func (ts *todoserver) handleTest(w http.ResponseWriter, r *http.Request) {
@@ -56,8 +56,8 @@ func (ts *todoserver) handleListAdd(w http.ResponseWriter, r *http.Request) {
 	items := r.Form["item"]
 	listNames := r.Form["list"]
 
-	err := ts.addListItems(listNames, items)
-	if err !=nil{
+	err := ts.addListItems(items, listNames)
+	if err != nil {
 		io.WriteString(w, outcomeMessage(false, err.Error())) //todo display available endpoints
 		return
 	}
@@ -65,36 +65,57 @@ func (ts *todoserver) handleListAdd(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, outcomeMessage(true, ""))
 }
 
-func (ts *todoserver) addListItems(listNames []string, items []string) error{
+func (ts *todoserver) addListItems(items, listNames []string) error {
 
-	if len(items) ==0{
+	if len(items) == 0 {
 		return errors.New("no items to add")
 	}
-	if len(listNames) >1{
+	if len(listNames) > 1 {
 		return errors.New("too many lists specified")
 	}
 
-	if listNames == nil {
-		log.Println("listnames is nil")
-		//new style listname::item is here
+	if len(listNames) == 0 {
 		for _, itm := range items {
-			listName := defaultlist
-			d := strings.Index(itm, listDelim)
-			if d >= 0 {
-				listName = itm[:d]
-				itm = itm[d+len(listDelim):]
-			}
-			ts.collection.GetOrCreateList(listName).AddItems(itm)
+			listName, itm := extractListName(itm)
+			ts.collection.AddItems(listName, itm)
 		}
 
 	} else {
-		log.Println("listnames is NOT NIL: ", listNames)
-		//should only be one listName
-		for _, listName := range listNames {
-			ts.collection.GetOrCreateList(listName).AddItems(items...)
-		}
-
+		// listNames must have exactly one entry
+		ts.collection.AddItems(listNames[0], items...)
 	}
+	return nil
+}
+
+// extractListName extracts listName from an item with a format "listName::item data"
+// if listName is not embedded in the item then defaultList is returned
+func extractListName(itm string) (string, string) {
+	listName := defaultList
+	d := strings.Index(itm, listDelim)
+	if d >= 0 {
+		listName = itm[:d]
+		itm = itm[d+len(listDelim):]
+	}
+	return listName, itm
+}
+
+func (ts *todoserver) listRemoveItems(items, listNames []string) error {
+	if len(items) == 0 {
+		return errors.New("no items to remove")
+	}
+	if len(listNames) > 1 {
+		return errors.New("too many lists specified")
+	}
+	if len(listNames) == 0 {
+		for _, itm := range items {
+			listName, itm := extractListName(itm)
+			ts.collection.RemoveItems(listName, itm)
+		}
+	} else {
+		// listNames must have exactly one entry
+		ts.collection.RemoveItems(listNames[0], items...)
+	}
+
 	return nil
 }
 
@@ -108,18 +129,11 @@ func (ts *todoserver) handleListRemove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	items := r.Form["item"]
-	if len(items) == 0 {
-		io.WriteString(w, outcomeMessage(false, "no items to remove")) //todo display available endpoints
-		return
-	}
-
 	listNames := r.Form["list"]
-	if listNames == nil {
-		listNames = append(listNames, defaultlist)
-	}
-
-	for _, listName := range listNames {
-		ts.collection.GetOrCreateList(listName).RemoveItems(items...)
+	err := ts.listRemoveItems(items, listNames)
+	if len(items) == 0 {
+		io.WriteString(w, outcomeMessage(false, err.Error())) //todo display available endpoints
+		return
 	}
 
 	io.WriteString(w, outcomeMessage(true, ""))
@@ -136,7 +150,7 @@ func (ts *todoserver) handleListGet(w http.ResponseWriter, r *http.Request) {
 
 	listnames := r.Form["list"]
 	if listnames == nil {
-		listnames = append(listnames, defaultlist)
+		listnames = append(listnames, defaultList)
 	}
 
 	io.WriteString(w, ts.collection.SubSet(listnames...).ToJSON())
@@ -176,8 +190,8 @@ func (ts *todoserver) handleWebAddWithRedirect(w http.ResponseWriter, r *http.Re
 	}
 	items := r.Form["item"]
 	listNames := r.Form["list"]
-	err := ts.addListItems(listNames, items)
-	if err !=nil{
+	err := ts.addListItems(items, listNames)
+	if err != nil {
 		io.WriteString(w, outcomeMessage(false, err.Error())) //todo display available endpoints
 	}
 	http.Redirect(w, r, "/web/getall", http.StatusTemporaryRedirect)
@@ -190,18 +204,21 @@ func (ts *todoserver) handleWebRemoveWithRedirect(w http.ResponseWriter, r *http
 	}
 
 	items := r.Form["item"]
-	if len(items) == 0 {
-		io.WriteString(w, outcomeMessage(false, "no items to remove")) //todo display available endpoints
+	for i := range items {
+		esc, err := url.QueryUnescape(items[i])
+		if err != nil {
+			log.Printf(util.ToJSON(map[string]interface{}{"msg": "error escaping web remove request", "err": err}))
+			continue
+		}
+		items[i] = esc
+	}
+
+	listNames := r.Form["list"]
+
+	err := ts.listRemoveItems(items, listNames)
+	if err != nil {
+		io.WriteString(w, outcomeMessage(false, err.Error())) //todo display available endpoints
 		return
-	}
-
-	listnames := r.Form["list"]
-	if listnames == nil {
-		listnames = append(listnames, defaultlist)
-	}
-
-	for _, listname := range listnames {
-		ts.collection.GetOrCreateList(listname).RemoveItems(items...)
 	}
 	http.Redirect(w, r, "/web/getall", http.StatusTemporaryRedirect)
 }
@@ -214,10 +231,11 @@ func (ts *todoserver) handleWebGetAll(w http.ResponseWriter, r *http.Request) {
 	html := "<html>"
 	html += `<a href="add">Add</a><br><br>`
 
-	listnames := ts.collection.Keys()
+	listnames := ts.collection.Names()
+	sort.Strings(listnames)
 
-	for _, listname := range listnames {
-		lst := ts.collection.GetList(listname)
+	for _, listName := range listnames {
+		lst := ts.collection.GetList(listName)
 		if lst == nil {
 			continue
 		}
@@ -225,13 +243,13 @@ func (ts *todoserver) handleWebGetAll(w http.ResponseWriter, r *http.Request) {
 		items := lst.Items()
 		sort.Sort(list.ByItem(items))
 		sort.Sort(list.ByPriority(items))
-		html += fmt.Sprintf("%s<hr><table>", listname)
+		html += fmt.Sprintf("%s<hr><table>", listName)
 		for _, item := range items {
 
 			removeButton := fmt.Sprintf(`<form action="http://%s:%d/web/remove_redirect">
 			<input type="hidden" name="list" value="%s">
 			<input type="hidden" name="item" value="%s">
-			<input type="submit" value="rm"></form>`, ts.host, ts.port, listname, item.Item)
+			<input type="submit" value="rm"></form>`, ts.host, ts.port, url.QueryEscape(listName), url.QueryEscape(item.Item))
 
 			html += fmt.Sprintf(`<tr>
 						<td>%d</td>

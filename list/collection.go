@@ -49,15 +49,7 @@ func DeserializeCollection(c []byte) (Collection, error) {
 	return ret, nil
 }
 
-func (c Collection) Keys() []string {
-	ret := make([]string, 0)
-	for key, _ := range c {
-		ret = append(ret, key)
-	}
-	return ret
-}
-
-func (c Collection) GetOrCreateList(listName string) List {
+func (c Collection) getOrCreateList(listName string) List {
 	if _, ok := c[listName]; !ok {
 		c[listName] = NewList()
 	}
@@ -78,6 +70,18 @@ func (c Collection) GetList(listName string) List {
 		return nil
 	}
 	return l
+}
+
+func (c Collection) AddItems(listName string, items ...string) {
+	c.getOrCreateList(listName).AddItems(items...)
+}
+
+func (c Collection) RemoveItems(listName string, items ...string) {
+	lst := c.getOrCreateList(listName)
+	lst.RemoveItems(items...)
+	if len(lst.Items()) == 0 {
+		delete(c, listName)
+	}
 }
 
 func (c Collection) SubSet(listNames ...string) Collection {
