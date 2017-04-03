@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jimmyjames85/todoserver/list"
+	"github.com/jimmyjames85/todoserver/util"
 )
 
 type todoserver struct {
@@ -16,17 +17,19 @@ type todoserver struct {
 	port          int
 	pass          string
 	saveFile      string
+	resourceDir   string
 	saveFrequency time.Duration
 	collection    list.Collection
 	endpoints     map[string]func(http.ResponseWriter, *http.Request)
 }
 
-func NewTodoServer(host string, port int, pass, savefile string, saveFrequency time.Duration) *todoserver {
+func NewTodoServer(host string, port int, pass, savefile string, resourceDir string, saveFrequency time.Duration) *todoserver {
 	c := &todoserver{
 		host:          host,
 		port:          port,
 		pass:          pass,
 		saveFile:      savefile,
+		resourceDir:   resourceDir,
 		saveFrequency: saveFrequency,
 		collection:    list.NewCollection(),
 	}
@@ -45,12 +48,24 @@ func (ts *todoserver) Serve() error {
 		"/web/add_redirect":    ts.handleWebAddWithRedirect,
 		"/web/remove_redirect": ts.handleWebRemoveWithRedirect,
 		"/web/getall":          ts.handleWebGetAll,
+		"/web/login":           ts.handleWebLogin,
+		"/web/login_submit":    ts.handleWebLoginSubmit,
 		"/healthcheck":         ts.handleHealthcheck,
+
 		//"/test":                     ts.handleTest,
 	}
 
 	for ep, fn := range ts.endpoints {
 		http.HandleFunc(ep, fn)
+	}
+
+	// this should not be in the list of available endpoints
+	// this is just to serve anything inside resourceDir todo which should be configurable or resources need to be embedded in the binary
+	// current use case is serving up images
+	if _, err := os.Stat(ts.resourceDir); err == nil {
+		http.Handle("/", http.FileServer(http.Dir(ts.resourceDir)))
+	} else {
+		log.Println(util.ToJSON(map[string]interface{}{"err": err, "info": "unable to server files from resource directory"}))
 	}
 
 	if _, err := os.Stat(ts.saveFile); err == nil {

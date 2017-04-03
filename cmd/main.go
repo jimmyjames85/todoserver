@@ -15,6 +15,7 @@ type config struct {
 	Pass64           string `envconfig:"PASS64" required:"false" default:""`                 // base64 password
 	SaveFileloc      string `envconfig:"SAVEFILE" required:"false" default:"/tmp/todolists"` // where to save the to-do list
 	SaveFrequencySec int    `envconfig:"SAVE_FREQUENCY_SEC" required:"false" default:"60"`   // how often to save the to-do list
+	ResourceDir      string `envconfig:"RESOURCE_DIR" required:"false" default:""`           // where static resources reside
 }
 
 func main() {
@@ -25,7 +26,7 @@ func main() {
 		log.Fatal("unable to decode PASS64")
 	}
 
-	ts := todoserver.NewTodoServer(c.Host, c.Port, string(pass), c.SaveFileloc, time.Duration(c.SaveFrequencySec)*time.Second)
+	ts := todoserver.NewTodoServer(c.Host, c.Port, string(pass), c.SaveFileloc, c.ResourceDir,time.Duration(c.SaveFrequencySec)*time.Second)
 	err = ts.Serve()
 	if err != nil {
 		log.Fatal(err)
