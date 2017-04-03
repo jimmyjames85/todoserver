@@ -235,9 +235,10 @@ func (ts *todoserver) handleWebGetAll(w http.ResponseWriter, r *http.Request) {
 	table th { border: 1px solid #00878F; font-family: "Courier New", Courier, monospace; font-size: 12pt ; padding: 8px 8px 8px 8px ; }
 	table td { background-color: #F0F0F0; }
 	table td.prio { width: 5%; }
-	table td.item { width: 60%; background-color: #FFFFFF; }
+	table td.item { width: 70%; background-color: #FFFFFF; font-size: 22pt; }
 	table td.created { width: 10%; }
 	table td.due { width: 10%; }
+	table td.edit { width: 5%; }
 	</style>`
 
 	listNames := ts.collection.Names()
@@ -252,7 +253,7 @@ func (ts *todoserver) handleWebGetAll(w http.ResponseWriter, r *http.Request) {
 		items := lst.Items()
 		sort.Sort(list.ByItem(items))
 		sort.Sort(list.ByPriority(items))
-		html += fmt.Sprintf("%s<hr><table>", listName)
+		html += fmt.Sprintf("<h2>%s</h2><hr><table>", listName)
 		html += `<tr>
 				<th>Prio</th>
 				<th>Item</th>
