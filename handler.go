@@ -1,6 +1,7 @@
 package todoserver
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -10,8 +11,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"encoding/base64"
 
 	"github.com/jimmyjames85/todoserver/list"
 	"github.com/jimmyjames85/todoserver/util"
@@ -282,7 +281,7 @@ func (ts *todoserver) handleWebLoginSubmit(w http.ResponseWriter, r *http.Reques
 }
 
 func (ts *todoserver) handleWebGetAll(w http.ResponseWriter, r *http.Request) {
-	if !ts.parseFormDataAndLog(w, r) || !ts.checkPassword(w, r){
+	if !ts.parseFormDataAndLog(w, r) || !ts.checkPassword(w, r) {
 		return
 	}
 
