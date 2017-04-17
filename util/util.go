@@ -27,6 +27,20 @@ func ToBase64(data string) string {
 	}
 	return out.String()
 }
+//
+//func Write64(buf bytes.Buffer, data []byte)  error {
+//
+//	dataBuf := bytes.NewBuffer(data)
+//
+//	row := make([]byte, 72)
+//	b64 := base64.NewEncoder(base64.StdEncoding, buf)
+//
+//	for n, err := dataBuf.Read(row); err == nil; n, err = dataBuf.Read(row){
+//		b64.Write(row[:n])
+//		buf.WriteByte('\n')
+//	}
+//	return b64.Close()
+//}
 
 func ReadStringTrimDelim(buf *bytes.Buffer, delim byte) (string, error) {
 	line, err := buf.ReadString(delim)

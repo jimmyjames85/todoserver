@@ -282,7 +282,7 @@ func (ts *todoserver) handleWebLoginSubmit(w http.ResponseWriter, r *http.Reques
 }
 
 func (ts *todoserver) handleWebGetAll(w http.ResponseWriter, r *http.Request) {
-	if !ts.parseFormDataAndLog(w, r) || !ts.checkPassword(w, r){
+	if !ts.parseFormDataAndLog(w, r) || !ts.checkPassword(w, r) {
 		return
 	}
 
@@ -309,8 +309,11 @@ func (ts *todoserver) handleWebGetAll(w http.ResponseWriter, r *http.Request) {
 		}
 
 		items := lst.Items()
-		sort.Sort(list.ByItem(items))
-		sort.Sort(list.ByPriority(items))
+		sort.Slice(items, func(i, j int) bool {
+			return true
+		})
+
+		list.SortItemsByCreatedAt(items)
 		html += fmt.Sprintf("<h2>%s</h2><hr><table>", listName)
 		html += `<tr>
 				<th>Prio</th>

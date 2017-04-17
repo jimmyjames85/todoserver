@@ -3,6 +3,7 @@ package list
 import (
 	"strings"
 	"time"
+	"sort"
 )
 
 type Item struct {
@@ -27,26 +28,18 @@ func (i *Item) CreatedAtDateString() string {
 	return fmtUnixTime(i.CreatedAt)
 }
 
-type ByItem []Item
+func SortItemsByItem(items []Item) {
+	sort.Slice(items, func(i, j int) bool { return strings.Compare(items[i].Item, items[j].Item) < 0 })
+}
 
-func (m ByItem) Len() int           { return len(m) }
-func (m ByItem) Swap(i, j int)      { m[i], m[j] = m[j], m[i] }
-func (m ByItem) Less(i, j int) bool { return strings.Compare(m[i].Item, m[j].Item) < 0 }
+func SortItemsByPriority(items []Item) {
+	sort.Slice(items, func(i, j int) bool { return items[i].Priority < items[j].Priority })
+}
 
-type ByPriority []Item
+func SortItemsByCreatedAt(items []Item) {
+	sort.Slice(items, func(i, j int) bool { return items[i].CreatedAt < items[j].CreatedAt })
+}
 
-func (p ByPriority) Len() int           { return len(p) }
-func (p ByPriority) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
-func (p ByPriority) Less(i, j int) bool { return p[i].Priority < p[j].Priority }
-
-type ByCreatedAt []Item
-
-func (c ByCreatedAt) Len() int           { return len(c) }
-func (c ByCreatedAt) Swap(i, j int)      { c[i], c[j] = c[j], c[i] }
-func (c ByCreatedAt) Less(i, j int) bool { return c[i].CreatedAt < c[j].CreatedAt }
-
-type ByDueDate []Item
-
-func (d ByDueDate) Len() int           { return len(d) }
-func (d ByDueDate) Swap(i, j int)      { d[i], d[j] = d[j], d[i] }
-func (d ByDueDate) Less(i, j int) bool { return d[i].DueDate < d[j].DueDate }
+func SortItemsByDueDate(items []Item) {
+	sort.Slice(items, func(i, j int) bool { return items[i].DueDate < items[j].DueDate })
+}
