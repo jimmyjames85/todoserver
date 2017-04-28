@@ -8,22 +8,30 @@ import (
 	"os"
 	"time"
 
+	"database/sql"
+	"github.com/go-sql-driver/mysql"
 	"github.com/jimmyjames85/todoserver/list"
 	"github.com/jimmyjames85/todoserver/util"
 )
 
 type todoserver struct {
-	host          string
-	port          int
+
+	//todo remove these
 	pass          string
 	saveFile      string
-	resourceDir   string
 	saveFrequency time.Duration
 	collection    list.Collection
+
+	host          string
+	port          int
+	resourceDir   string
+	mysqlCfg      mysql.Config
+	db            *sql.DB
 	endpoints     map[string]func(http.ResponseWriter, *http.Request)
 }
 
-func NewTodoServer(host string, port int, pass, savefile string, resourceDir string, saveFrequency time.Duration) *todoserver {
+func NewTodoServer(host string, port int, pass, savefile string, resourceDir string, saveFrequency time.Duration, dsn mysql.Config) *todoserver {
+
 	c := &todoserver{
 		host:          host,
 		port:          port,
@@ -33,6 +41,34 @@ func NewTodoServer(host string, port int, pass, savefile string, resourceDir str
 		saveFrequency: saveFrequency,
 		collection:    list.NewCollection(),
 	}
+
+	fmt.Printf("DSN: %s\n", dsn.FormatDSN())
+	db, err := sql.Open("mysql", dsn.FormatDSN())
+	if err != nil {
+		log.Fatalf("could not open %v", err)
+	}
+	c.db = db
+	rows, err := db.Query("select id, username, sessionid from users")
+	if err != nil {
+		log.Fatalf("no query %v", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		id := sql.NullInt64{}
+		username := sql.NullString{}
+		sessionId := sql.NullString{}
+
+		err = rows.Scan(&id, &username, &sessionId)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		fmt.Printf("%#v %#v %#v\n", id, username, sessionId)
+	}
+	err = rows.Err()
+	if err != nil {
+		log.Fatal(err)
+	}
 	return c
 }
 
@@ -41,9 +77,11 @@ func (ts *todoserver) Serve() error {
 
 	ts.endpoints = map[string]func(http.ResponseWriter, *http.Request){
 		"/add":                 ts.handleListAdd, //todo save on every modification (shrug)
-		"/get":                 ts.handleListGet,
+//		"/get":                 ts.handleListGet,
+		"/v2/get":              ts.handleListGetV2,
 		"/getall":              ts.handleListGetAll,
 		"/remove":              ts.handleListRemove,
+//		"/update":              ts.handleListUpdate,
 		"/web/add":             ts.handleWebAdd,
 		"/web/add_redirect":    ts.handleWebAddWithRedirect,
 		"/web/remove_redirect": ts.handleWebRemoveWithRedirect,

@@ -15,12 +15,21 @@ type List interface {
 	String() string
 	ToJSON() string
 	GetItem(item string) (Item, bool)
-	UpdateItem(item Item) bool
+	UpdateItem(item string, newItem Item) bool
 	Serialize() string
 }
 
 type list struct {
 	data map[string]Item
+}
+
+type List2 struct {
+	Id        int64  `json:"id"`
+	UserId    int64  `json:"user_id"`
+	Title     string `json:"title"`
+	Priority  int64  `json:"priority"`
+	CreatedAt int64  `json:"created_at"`
+	Items     []Item `json:"items"`
 }
 
 func DeserializeList(serializedList string) (list, error) {
@@ -82,10 +91,10 @@ func (l list) GetItem(item string) (Item, bool) {
 	return ret, ok
 }
 
-func (l list) UpdateItem(item Item) bool {
-	if _, ok := l.data[item.Item]; !ok {
+func (l list) UpdateItem(itm string, newItem Item) bool {
+	if _, ok := l.data[itm]; !ok {
 		return false
 	}
-	l.data[item.Item] = item
+	l.data[itm] = newItem
 	return true
 }

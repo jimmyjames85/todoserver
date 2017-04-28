@@ -1,0 +1,83 @@
+version: '2'
+services:
+
+  setup:
+    image: my.centos.seven
+    links:
+      - "mysql:mysql"
+    volumes:
+      - ./createTables.sql:/etc/createTables.sql
+    command: >
+      bash -c "while ! echo | nc -w1 mysql 3306 > /dev/null ; do echo waiting for mysql; sleep 1; done; echo mysql connected &&
+      mysql -uroot -h mysql < /etc/createTables.sql &&
+      while [ true ] ; do sleep 1; done
+      "
+      
+  #"yum -y install mysql wget emacs-nox net-tools less nmap bind-utils &&      
+      
+  # proxysql:
+  #   image: docker.jimmyjames85.net/jimmyjames85/proxysql
+  #   links:
+  #     - "mysql1:mysql1.jimmyjames85.net"
+  #     - "mysql2:mysql2.jimmyjames85.net"
+  #   ports:
+  #     - "6032:6032"
+  #     - "6033:6033"
+  #   command: >
+  #     bash -c "
+  #     while ! echo | nc -w1 mysql1.jimmyjames85.net 3306 > /dev/null ; do echo waiting for mysql1; sleep 1; done; echo mysql1 connected &&
+  #     while ! echo | nc -w1 mysql2.jimmyjames85.net 3306 > /dev/null ; do echo waiting for mysql2; sleep 1; done; echo mysql2 connected &&
+  #     /usr/bin/proxysql -f -c /etc/proxysql.cnf --initial 2>&1 | tee -a /var/lib/proxysql/proxysql.log"
+
+
+  # example1:
+  #   image: docker.jimmyjames85.net/jimmyjames85/proxysql
+  #   volumes:
+  #     - ./gotham.sql:/etc/gotham.sql
+  #     - ./newyork.sql:/etc/newyork.sql
+  #   links:
+  #     - "gotham:gotham.jimmyjames85.net"
+  #     - "newyork:newyork.jimmyjames85.net"
+  #   ports:
+  #     - "6032:6032"
+  #     - "6033:6033"
+  #   command: >
+  #     bash -c "
+  #     while ! echo | nc -w1 gotham.jimmyjames85.net 3306 > /dev/null ; do echo waiting for gotham; sleep 1; done; echo gotham connected &&
+  #     while ! echo | nc -w1 newyork.jimmyjames85.net 3306 > /dev/null ; do echo waiting for newyork; sleep 1; done; echo newyork connected &&
+  #     mysql -uroot -h gotham.jimmyjames85.net < /etc/gotham.sql &&
+  #     mysql -uroot -h newyork.jimmyjames85.net < /etc/newyork.sql &&
+  #     /usr/bin/proxysql -f -c /etc/proxysql.cnf --initial 2>&1 | tee -a /var/lib/proxysql/proxysql.log"
+ 
+  # example2:
+  #   image: docker.jimmyjames85.net/jimmyjames85/proxysql
+  #   volumes:
+  #     - ./gotham.sql:/etc/gotham.sql
+  #     - ./newyork.sql:/etc/newyork.sql
+  #     - ./example2.cnf:/etc/proxysql.cnf
+  #   links:
+  #     - "gotham:gotham.jimmyjames85.net"
+  #     - "newyork:newyork.jimmyjames85.net"
+  #   ports:
+  #     - "6032:6032"
+  #     - "6033:6033"
+  #   command: >
+  #     bash -c "
+  #     while ! echo | nc -w1 gotham.jimmyjames85.net 3306 > /dev/null ; do echo waiting for gotham; sleep 1; done; echo gotham connected &&
+  #     while ! echo | nc -w1 newyork.jimmyjames85.net 3306 > /dev/null ; do echo waiting for newyork; sleep 1; done; echo newyork connected &&
+  #     mysql -uroot -h gotham.jimmyjames85.net < /etc/gotham.sql &&
+  #     mysql -uroot -h newyork.jimmyjames85.net < /etc/newyork.sql &&
+  #     /usr/bin/proxysql -f -c /etc/proxysql.cnf --initial 2>&1 | tee -a /var/lib/proxysql/proxysql.log"
+
+  mysql:
+    image: percona:5.5
+    volumes:
+      - ./createTables.sql:/etc/createTables.sql
+    environment:
+      - MYSQL_ALLOW_EMPTY_PASSWORD=1
+    expose:
+      - "3306"
+    ports:
+      - "3306:3306"
+
+

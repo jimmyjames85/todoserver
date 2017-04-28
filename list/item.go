@@ -1,16 +1,19 @@
 package list
 
 import (
+	"sort"
 	"strings"
 	"time"
-	"sort"
 )
 
 type Item struct {
-	Item      string `json:"item"`
+	Details   string `json:"details"`
+	Item      string `json:"item"` //Currently this is the primary key
+	Title     string `json:"title"`
 	Priority  int    `json:"priority"`
 	CreatedAt int64  `json:"created_at"`
 	DueDate   int64  `json:"due_date"`
+	Id        int64  `json:"id"`
 }
 
 func fmtUnixTime(sec int64) string {

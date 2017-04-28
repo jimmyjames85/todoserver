@@ -5,6 +5,9 @@ import (
 	"log"
 	"time"
 
+	"database/sql"
+	"fmt"
+	"github.com/go-sql-driver/mysql"
 	"github.com/jimmyjames85/todoserver"
 	"github.com/kelseyhightower/envconfig"
 )
@@ -16,9 +19,15 @@ type config struct {
 	SaveFileloc      string `envconfig:"SAVEFILE" required:"false" default:"/tmp/todolists"` // where to save the to-do list
 	SaveFrequencySec int    `envconfig:"SAVE_FREQUENCY_SEC" required:"false" default:"60"`   // how often to save the to-do list
 	ResourceDir      string `envconfig:"RESOURCE_DIR" required:"false" default:""`           // where static resources reside
+	DBuser           string `envconfig:"DB_USER" required "false" default:"todouser"`
+	DBPswd           string `envconfig:"DB_PSWD" required "false" default:"todopswd"`
+	DBHost           string `envconfig:"DB_HOST" required "false" default:"localhost"`
+	DBPort           int    `envconfig:"DB_PORT" required "false" default:"3306"`
+	DBName           string `envconfig:"DB_NAME" required "false" default:"todolists"`
 }
 
 func main() {
+
 	c := &config{}
 	envconfig.MustProcess("TODO", c)
 	pass, err := base64.StdEncoding.DecodeString(c.Pass64)
@@ -26,7 +35,24 @@ func main() {
 		log.Fatal("unable to decode PASS64")
 	}
 
-	ts := todoserver.NewTodoServer(c.Host, c.Port, string(pass), c.SaveFileloc, c.ResourceDir,time.Duration(c.SaveFrequencySec)*time.Second)
+	dsn := mysql.Config{}
+	dsn.Addr = fmt.Sprintf("%s:%d", c.DBHost, c.DBPort)
+	dsn.Passwd = c.DBPswd
+	dsn.User = c.DBuser
+	dsn.DBName = c.DBName
+	dsn.Net = "tcp"
+
+	fmt.Printf("dbname: %s %s\n", dsn.DBName, c.DBName)
+	db, err := sql.Open("mysql", dsn.FormatDSN())
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+	if err = db.Ping(); err != nil {
+		log.Fatal(err)
+	}
+
+	ts := todoserver.NewTodoServer(c.Host, c.Port, string(pass), c.SaveFileloc, c.ResourceDir, time.Duration(c.SaveFrequencySec)*time.Second, dsn)
 	err = ts.Serve()
 	if err != nil {
 		log.Fatal(err)

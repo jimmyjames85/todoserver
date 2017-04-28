@@ -15,13 +15,14 @@ import (
 
 	"github.com/jimmyjames85/todoserver/list"
 	"github.com/jimmyjames85/todoserver/util"
+	"github.com/jimmyjames85/todoserver/db"
 )
 
 const defaultList = ""
 const listDelim = "::"
 
 func (ts *todoserver) handleTest(w http.ResponseWriter, r *http.Request) {
-	if !ts.parseFormDataAndLog(w, r) {
+	if _, err :=ts.validateIncommingRequest(w, r); err !=nil {
 		return
 	}
 	for k, v := range r.Form {
@@ -33,7 +34,7 @@ func (ts *todoserver) handleTest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ts *todoserver) handleHealthcheck(w http.ResponseWriter, r *http.Request) {
-	if !ts.parseFormDataAndLog(w, r) {
+	if _, err :=ts.validateIncommingRequest(w, r); err !=nil {
 		return
 	}
 	endpoints := make([]string, 0)
@@ -46,19 +47,42 @@ func (ts *todoserver) handleHealthcheck(w http.ResponseWriter, r *http.Request) 
 	}
 	io.WriteString(w, util.ToJSON(m))
 }
+//
+//// e.g.
+////
+//// curl localhost:1234/update -d list=grocery -d item=milk -d item=bread
+////
+//func (ts *todoserver) handleListUpdate(w http.ResponseWriter, r *http.Request) {
+//	if _, err :=ts.validateIncommingRequest(w, r); err !=nil {
+//		return
+//	}
+//	itm, ok := ts.collection.GetList("jim").GetItem("test")
+//	if !ok {
+//		io.WriteString(w, outcomeMessage(false, "no such item"))
+//		return
+//	}
+//
+//	fmt.Printf("%#v", itm)
+//	itm.Priority++
+//	ts.collection.GetList("jim").UpdateItem(itm.Item, itm)
+//	fmt.Printf("%#v", itm)
+//	io.WriteString(w, outcomeMessage(true, ""))
+//}
 
 // e.g.
 //
 // curl localhost:1234/add -d list=grocery -d item=milk -d item=bread
 //
 func (ts *todoserver) handleListAdd(w http.ResponseWriter, r *http.Request) {
-	if !ts.parseFormDataAndLog(w, r) {
+	uid, err :=ts.validateIncommingRequest(w, r)
+
+	if err !=nil {
 		return
 	}
 	items := r.Form["item"]
 	listNames := r.Form["list"]
 
-	err := ts.addListItems(items, listNames)
+	err = ts.addListItems(uid, items, listNames)
 	if err != nil {
 		io.WriteString(w, outcomeMessage(false, err.Error())) //todo display available endpoints
 		return
@@ -67,7 +91,7 @@ func (ts *todoserver) handleListAdd(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, outcomeMessage(true, ""))
 }
 
-func (ts *todoserver) addListItems(items, listNames []string) error {
+func (ts *todoserver) addListItems(userid int64, items, listNames []string) error {
 
 	if len(items) == 0 {
 		return errors.New("no items to add")
@@ -79,12 +103,14 @@ func (ts *todoserver) addListItems(items, listNames []string) error {
 	if len(listNames) == 0 {
 		for _, itm := range items {
 			listName, itm := extractListName(itm)
-			ts.collection.AddItems(listName, itm)
+			backend.AddItems(ts.db, userid, listName, itm)
+			//ts.collection.AddItems(listName, itm)
 		}
 
 	} else {
 		// listNames must have exactly one entry
-		ts.collection.AddItems(listNames[0], items...)
+		backend.AddItems(ts.db,userid, listNames[0], items...)
+		//ts.collection.AddItems(listNames[0], items...)
 	}
 	return nil
 }
@@ -126,7 +152,7 @@ func (ts *todoserver) listRemoveItems(items, listNames []string) error {
 // curl localhost:1234/remove -d list=grocery -d item='some item' -d item='some other item'
 //
 func (ts *todoserver) handleListRemove(w http.ResponseWriter, r *http.Request) {
-	if !ts.parseFormDataAndLog(w, r) {
+	if _, err :=ts.validateIncommingRequest(w, r); err !=nil {
 		return
 	}
 
@@ -143,10 +169,12 @@ func (ts *todoserver) handleListRemove(w http.ResponseWriter, r *http.Request) {
 
 // e.g.
 //
-// curl localhost:1234/get -d list=grocery
+// curl localhost:1234/v2/get -d list=grocery -d list=homework ...
 //
-func (ts *todoserver) handleListGet(w http.ResponseWriter, r *http.Request) {
-	if !ts.parseFormDataAndLog(w, r) {
+func (ts *todoserver) handleListGetV2(w http.ResponseWriter, r *http.Request) {
+
+	uid, err :=ts.validateIncommingRequest(w, r)
+	if err !=nil {
 		return
 	}
 
@@ -155,22 +183,52 @@ func (ts *todoserver) handleListGet(w http.ResponseWriter, r *http.Request) {
 		listnames = append(listnames, defaultList)
 	}
 
-	io.WriteString(w, ts.collection.SubSet(listnames...).ToJSON())
+	lists := make ([]list.List2, 0)
+
+	for _, title := range listnames{
+
+		lst, err := backend.GetList(ts.db, uid, title)
+		if err !=nil{
+			log.Printf("%#v\n", err)
+		} else {
+			lists = append(lists, lst)
+		}
+	}
+
+	io.WriteString(w, util.ToJSON(lists))
+
 }
+//
+//// e.g.
+////
+//// curl localhost:1234/get -d list=grocery
+////
+//func (ts *todoserver) handleListGet(w http.ResponseWriter, r *http.Request) {
+//	if _, err :=ts.validateIncommingRequest(w, r); err !=nil {
+//		return
+//	}
+//
+//	listnames := r.Form["list"]
+//	if listnames == nil {
+//		listnames = append(listnames, defaultList)
+//	}
+//
+//	io.WriteString(w, ts.collection.SubSet(listnames...).ToJSON())
+//}
 
 // e.g.
 //
 // curl localhost:1234/getall
 //
 func (ts *todoserver) handleListGetAll(w http.ResponseWriter, r *http.Request) {
-	if !ts.parseFormDataAndLog(w, r) {
+	if _, err :=ts.validateIncommingRequest(w, r); err !=nil {
 		return
 	}
 	io.WriteString(w, ts.collection.ToJSON())
 }
 
 func (ts *todoserver) handleWebAdd(w http.ResponseWriter, r *http.Request) {
-	if !ts.parseFormDataAndLog(w, r) {
+	if _, err :=ts.validateIncommingRequest(w, r); err !=nil {
 		return
 	}
 	io.WriteString(w, fmt.Sprintf(`<!DOCTYPE html><html><a href="getall">Get</a><br><br>
@@ -187,12 +245,14 @@ func (ts *todoserver) handleWebAdd(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ts *todoserver) handleWebAddWithRedirect(w http.ResponseWriter, r *http.Request) {
-	if !ts.parseFormDataAndLog(w, r) {
+	uid, err :=ts.validateIncommingRequest(w, r);
+	if err !=nil {
 		return
 	}
 	items := r.Form["item"]
 	listNames := r.Form["list"]
-	err := ts.addListItems(items, listNames)
+
+	err = ts.addListItems(uid, items, listNames)
 	if err != nil {
 		io.WriteString(w, outcomeMessage(false, err.Error())) //todo display available endpoints
 	}
@@ -201,7 +261,7 @@ func (ts *todoserver) handleWebAddWithRedirect(w http.ResponseWriter, r *http.Re
 
 //same as handleListRemove but with redirect
 func (ts *todoserver) handleWebRemoveWithRedirect(w http.ResponseWriter, r *http.Request) {
-	if !ts.parseFormDataAndLog(w, r) {
+	if _, err :=ts.validateIncommingRequest(w, r); err !=nil {
 		return
 	}
 
@@ -259,7 +319,7 @@ const passwordCookieName = "eWVrc2loV2hzYU1ydW9TZWVzc2VubmVUeXRpbGF1UWRuYXJCNy5v
 
 func (ts *todoserver) handleWebLoginSubmit(w http.ResponseWriter, r *http.Request) {
 
-	if !ts.parseFormDataAndLog(w, r) {
+	if _, err :=ts.validateIncommingRequest(w, r); err !=nil {
 		return
 	}
 	// TODO items := r.Form["username"] ... only one user right now :-/
@@ -282,7 +342,7 @@ func (ts *todoserver) handleWebLoginSubmit(w http.ResponseWriter, r *http.Reques
 }
 
 func (ts *todoserver) handleWebGetAll(w http.ResponseWriter, r *http.Request) {
-	if !ts.parseFormDataAndLog(w, r) || !ts.checkPassword(w, r) {
+	if _, err :=ts.validateIncommingRequest(w, r); err !=nil || !ts.checkPassword(w,r){ //todo checkpassowrd
 		return
 	}
 
@@ -343,24 +403,32 @@ func (ts *todoserver) handleWebGetAll(w http.ResponseWriter, r *http.Request) {
 	html += "</html>"
 	io.WriteString(w, html)
 }
-func (ts *todoserver) parseFormDataAndLog(w http.ResponseWriter, r *http.Request) bool {
+
+func (ts *todoserver) validateIncommingRequest(w http.ResponseWriter, r *http.Request) (int64, error) {
+
 	err := r.ParseForm()
-
-	log.Println(util.ToJSON(map[string]interface{}{
-		"Date":       time.Now().Unix(),
-		"Host":       r.Host,
-		"RemoteAddr": r.RemoteAddr,
-		"URL":        r.URL.String(),
-		"PostForm":   r.PostForm,
-		"Form":       r.Form,
-	}))
-
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		io.WriteString(w, outcomeMessage(false, fmt.Sprintf("failed to parse form data: %s", err)))
-		return false
+		return -1, err
 	}
-	return true
+
+	user := r.Header.Get("username")
+	pswd := r.Header.Get("password")
+
+	uid, err := backend.ValidateUser(ts.db, user, pswd)
+	if err != nil {
+		return -1, err
+	}
+	//log.Println(util.ToJSON(map[string]interface{}{
+	//	"Date":       time.Now().Unix(),
+	//	"Host":       r.Host,
+	//	"RemoteAddr": r.RemoteAddr,
+	//	"URL":        r.URL.String(),
+	//	"PostForm":   r.PostForm,
+	//	"Form":       r.Form,
+	//}))
+	return uid, nil
 }
 
 //todo what is a better way to do this????
