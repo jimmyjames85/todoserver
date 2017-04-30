@@ -12,10 +12,11 @@ USE todolists;
 -- DROP TABLE IF EXISTS `users`;
 
 CREATE TABLE `users` (
-       `id` BIGINT NOT NULL AUTO_INCREMENT,
+       `id` BIGINT UNIQUE NOT NULL AUTO_INCREMENT,
        `username` varchar(255) UNIQUE NOT NULL,
        `password` varchar(255) NOT NULL DEFAULT "",
-       `sessionid` varchar(255),
+       `apikey`   varchar(255) UNIQUE,
+       `sessionid` varchar(255) UNIQUE,
        PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
@@ -45,3 +46,6 @@ CREATE TABLE `items` (
        FOREIGN KEY(`listid`) REFERENCES lists(`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
+INSERT INTO users (username, password) VALUES ('bruce', 'wayne');
+INSERT INTO users (username, password) VALUES ('harvey', 'dent');
+INSERT INTO users (username, password) VALUES ('selina', 'kyle');

@@ -1,19 +1,15 @@
 package backend
 
 import (
-	"database/sql"
-	"log"
-
-	"fmt"
-
 	"bytes"
+	"database/sql"
+	"fmt"
 	"strings"
-
 	"github.com/jimmyjames85/todoserver/list"
 )
 
 func listId(db *sql.DB, listName string, userid int64) (int64, error) {
-	row := db.QueryRow("select id from lists where title=? and userid=?", listName, userid)
+	row := db.QueryRow("nselect id from lists where title=? and userid=?", listName, userid)
 	var listId int64
 	err := row.Scan(&listId)
 	if err != nil {
@@ -93,15 +89,3 @@ func GetList(db *sql.DB, userid int64, listTitle string) (list.List2, error) {
 
 }
 
-func ValidateUser(db *sql.DB, user string, password string) (int64, error) {
-
-	log.Printf("%s %s\n", user, password)
-	row := db.QueryRow("select id from users where username=? and password=?", user, password)
-
-	var id int64
-	err := row.Scan(&id)
-	if err != nil {
-		return -1, err
-	}
-	return id, err
-}

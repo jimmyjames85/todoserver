@@ -22,12 +22,12 @@ type todoserver struct {
 	saveFrequency time.Duration
 	collection    list.Collection
 
-	host          string
-	port          int
-	resourceDir   string
-	mysqlCfg      mysql.Config
-	db            *sql.DB
-	endpoints     map[string]func(http.ResponseWriter, *http.Request)
+	host        string
+	port        int
+	resourceDir string
+	mysqlCfg    mysql.Config
+	db          *sql.DB
+	endpoints   map[string]func(http.ResponseWriter, *http.Request)
 }
 
 func NewTodoServer(host string, port int, pass, savefile string, resourceDir string, saveFrequency time.Duration, dsn mysql.Config) *todoserver {
@@ -48,27 +48,27 @@ func NewTodoServer(host string, port int, pass, savefile string, resourceDir str
 		log.Fatalf("could not open %v", err)
 	}
 	c.db = db
-	rows, err := db.Query("select id, username, sessionid from users")
-	if err != nil {
-		log.Fatalf("no query %v", err)
-	}
-	defer rows.Close()
-	for rows.Next() {
-		id := sql.NullInt64{}
-		username := sql.NullString{}
-		sessionId := sql.NullString{}
-
-		err = rows.Scan(&id, &username, &sessionId)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		fmt.Printf("%#v %#v %#v\n", id, username, sessionId)
-	}
-	err = rows.Err()
-	if err != nil {
-		log.Fatal(err)
-	}
+	//rows, err := db.Query("select id, username, sessionid from users")
+	//if err != nil {
+	//	log.Fatalf("no query %v", err)
+	//}
+	//defer rows.Close()
+	//for rows.Next() {
+	//	id := sql.NullInt64{}
+	//	username := sql.NullString{}
+	//	sessionId := sql.NullString{}
+	//
+	//	err = rows.Scan(&id, &username, &sessionId)
+	//	if err != nil {
+	//		log.Fatal(err)
+	//	}
+	//
+	//	fmt.Printf("%#v %#v %#v\n", id, username, sessionId)
+	//}
+	//err = rows.Err()
+	//if err != nil {
+	//	log.Fatal(err)
+	//}
 	return c
 }
 
@@ -76,18 +76,20 @@ func NewTodoServer(host string, port int, pass, savefile string, resourceDir str
 func (ts *todoserver) Serve() error {
 
 	ts.endpoints = map[string]func(http.ResponseWriter, *http.Request){
-		"/add":                 ts.handleListAdd, //todo save on every modification (shrug)
-//		"/get":                 ts.handleListGet,
-		"/v2/get":              ts.handleListGetV2,
-		"/getall":              ts.handleListGetAll,
-		"/remove":              ts.handleListRemove,
-//		"/update":              ts.handleListUpdate,
+		"/add": ts.handleListAdd, //todo save on every modification (shrug)
+		//		"/get":                 ts.handleListGet,
+		"/v2/get": ts.handleListGetV2,
+		"/getall": ts.handleListGetAll,
+		"/remove": ts.handleListRemove,
+		//		"/update":              ts.handleListUpdate,
 		"/web/add":             ts.handleWebAdd,
 		"/web/add_redirect":    ts.handleWebAddWithRedirect,
 		"/web/remove_redirect": ts.handleWebRemoveWithRedirect,
 		"/web/getall":          ts.handleWebGetAll,
 		"/web/login":           ts.handleWebLogin,
 		"/web/login_submit":    ts.handleWebLoginSubmit,
+		"/admin/create_user":   ts.handleAdminCreateUser,
+		"/admin/create_apikey": ts.handleAdminCreateApikey,
 		"/healthcheck":         ts.handleHealthcheck,
 
 		//"/test":                     ts.handleTest,
@@ -103,7 +105,7 @@ func (ts *todoserver) Serve() error {
 	if _, err := os.Stat(ts.resourceDir); err == nil {
 		http.Handle("/", http.FileServer(http.Dir(ts.resourceDir)))
 	} else {
-		log.Println(util.ToJSON(map[string]interface{}{"err": err, "info": "unable to server files from resource directory"}))
+		log.Println(util.ToJSON(map[string]interface{}{"err": err, "info": "unable to serve files from resource directory"}))
 	}
 
 	if _, err := os.Stat(ts.saveFile); err == nil {
@@ -119,7 +121,7 @@ func (ts *todoserver) Serve() error {
 		for _ = range saveTimer {
 			err := ts.saveToDisk()
 			if err != nil {
-				fmt.Printf(outcomeMessage(false, fmt.Sprintf("%s", err))) //todo notify
+				log.Printf("error saving on a cron: %v\n", err)
 				return
 			}
 		}

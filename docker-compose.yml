@@ -2,7 +2,7 @@ version: '2'
 services:
 
   setup:
-    image: my.centos.seven
+    image: jamestappe.com/centos7
     links:
       - "mysql:mysql"
     volumes:
