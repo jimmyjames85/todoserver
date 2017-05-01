@@ -6,12 +6,12 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/url"
-	"sort"
 	"strings"
 	"time"
 
-	"encoding/base64"
+	"strconv"
+
+	"context"
 
 	"github.com/jimmyjames85/todoserver/auth"
 	"github.com/jimmyjames85/todoserver/db"
@@ -23,7 +23,7 @@ const defaultList = ""
 const listDelim = "::"
 
 func (ts *todoserver) handleTest(w http.ResponseWriter, r *http.Request) {
-	if err := ts.validateIncommingRequest(w, r); err != nil {
+	if err := ts.validateIncomingRequest(w, r); err != nil {
 		return
 	}
 	for k, v := range r.Form {
@@ -35,7 +35,7 @@ func (ts *todoserver) handleTest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ts *todoserver) handleHealthcheck(w http.ResponseWriter, r *http.Request) {
-	if err := ts.validateIncommingRequest(w, r); err != nil {
+	if err := ts.validateIncomingRequest(w, r); err != nil {
 		return
 	}
 	endpoints := make([]string, 0)
@@ -76,23 +76,24 @@ func (ts *todoserver) handleHealthcheck(w http.ResponseWriter, r *http.Request) 
 // curl localhost:1234/add -d list=grocery -d item=milk -d item=bread
 //
 func (ts *todoserver) handleListAdd(w http.ResponseWriter, r *http.Request) {
-	user, err := ts.validateIncommingUser(w, r)
-	if err != nil {
+
+	user, ok := r.Context().Value("user").(*auth.User)
+	if !ok {
+		ts.handleError(fmt.Errorf("no user in context %#v", user), "", http.StatusInternalServerError, w)
 		return
 	}
 	items := r.Form["item"]
 	listNames := r.Form["list"]
-
-	err = ts.addListItems(user.Id, items, listNames)
+	fmt.Printf("%#v\n", r.Form)
+	err := ts.addListItems(user.Id, items, listNames)
 	if err != nil {
-		ts.handleError(err, "", http.StatusBadRequest, w)
+		ts.handleError(err, "error adding items to list", http.StatusInternalServerError, w)
 		return
 	}
 	ts.handleSuccess("", w)
 }
 
 func (ts *todoserver) addListItems(userid int64, items, listNames []string) error {
-
 	if len(items) == 0 {
 		return errors.New("no items to add")
 	}
@@ -101,16 +102,21 @@ func (ts *todoserver) addListItems(userid int64, items, listNames []string) erro
 	}
 
 	if len(listNames) == 0 {
+		fmt.Printf("extracting listnames...make this a hash of arrays\n")
 		for _, itm := range items {
 			listName, itm := extractListName(itm)
-			backend.AddItems(ts.db, userid, listName, itm)
-			//ts.collection.AddItems(listName, itm)
-		}
+			err := backend.AddItems(ts.db, userid, listName, itm)
+			if err != nil {
+				return err
+			}
 
+		}
 	} else {
 		// listNames must have exactly one entry
-		backend.AddItems(ts.db, userid, listNames[0], items...)
-		//ts.collection.AddItems(listNames[0], items...)
+		err := backend.AddItems(ts.db, userid, listNames[0], items...)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -127,57 +133,49 @@ func extractListName(itm string) (string, string) {
 	return listName, itm
 }
 
-func (ts *todoserver) listRemoveItems(items, listNames []string) error {
+func (ts *todoserver) listRemoveItems(items []string) error {
 	if len(items) == 0 {
-		return errors.New("no items to remove")
-	}
-	if len(listNames) > 1 {
-		return errors.New("too many lists specified")
-	}
-	if len(listNames) == 0 {
-		for _, itm := range items {
-			listName, itm := extractListName(itm)
-			ts.collection.RemoveItems(listName, itm)
-		}
-	} else {
-		// listNames must have exactly one entry
-		ts.collection.RemoveItems(listNames[0], items...)
+		return fmt.Errorf("no items listed")
 	}
 
-	return nil
+	ids := make([]int64, len(items))
+	for i, sid := range items {
+		id, err := strconv.ParseInt(sid, 10, 64)
+		if err != nil {
+			return err
+		}
+		ids[i] = id
+	}
+	return backend.RemoveItems(ts.db, ids...)
 }
 
 // e.g.
 //
-// curl localhost:1234/remove -d list=grocery -d item='some item' -d item='some other item'
-//
+// curl localhost:1234/remove -d item=3 -d item=2 -d item=23
 func (ts *todoserver) handleListRemove(w http.ResponseWriter, r *http.Request) {
-	if err := ts.validateIncommingRequest(w, r); err != nil {
-		return
+
+	_, err := ts.validateIncomingUser(w, r)
+	if err != nil {
+		return //validateIncomingUser handles error
 	}
 	items := r.Form["item"]
-	listNames := r.Form["list"]
-	if len(items) == 0 {
-		ts.handleError(nil, "no items to remove", http.StatusBadRequest, w)
-		return
-	}
 
-	err := ts.listRemoveItems(items, listNames)
+	err = ts.listRemoveItems(items)
+
 	if err != nil {
 		ts.handleError(err, "unable to remove items", http.StatusInternalServerError, w)
 		return
 	}
-
 	ts.handleSuccess("", w)
 }
 
 // e.g.
 //
-// curl localhost:1234/v2/get -d list=grocery -d list=homework ...
+// curl localhost:1234/get -d list=grocery -d list=homework ...
 //
-func (ts *todoserver) handleListGetV2(w http.ResponseWriter, r *http.Request) {
+func (ts *todoserver) handleListGet(w http.ResponseWriter, r *http.Request) {
 
-	user, err := ts.validateIncommingUser(w, r)
+	user, err := ts.validateIncomingUser(w, r)
 	if err != nil {
 		return
 	}
@@ -193,57 +191,43 @@ func (ts *todoserver) handleListGetV2(w http.ResponseWriter, r *http.Request) {
 
 		lst, err := backend.GetList(ts.db, user.Id, title)
 		if err != nil {
-			log.Printf("%#v\n", err)
+			ts.logError(err, nil)
 		} else {
 			lists = append(lists, lst)
 		}
 	}
-
 	io.WriteString(w, util.ToJSON(lists))
-
 }
-
-//
-//// e.g.
-////
-//// curl localhost:1234/get -d list=grocery
-////
-//func (ts *todoserver) handleListGet(w http.ResponseWriter, r *http.Request) {
-//	if _, err :=ts.validateIncommingRequest(w, r); err !=nil {
-//		return
-//	}
-//
-//	listnames := r.Form["list"]
-//	if listnames == nil {
-//		listnames = append(listnames, defaultList)
-//	}
-//
-//	io.WriteString(w, ts.collection.SubSet(listnames...).ToJSON())
-//}
 
 // e.g.
 //
-// curl localhost:1234/getall
+// curl localhost:1234/getall -d list=grocery -d list=homework ...
 //
 func (ts *todoserver) handleListGetAll(w http.ResponseWriter, r *http.Request) {
-	user, err := ts.validateIncommingUser(w,r)
-	if err != nil{
-		ts.handleError(err, "unable to validate user", http.StatusBadRequest, w)
+
+	user, err := ts.validateIncomingUser(w, r)
+	if err != nil {
 		return
 	}
 
-	l, err := backend.GetList(ts.db,user.Id,"")
-	if err != nil{
-		ts.handleError(err, "unable to retrieve lists", http.StatusBadRequest, w)
-		return
+	listnames := r.Form["list"]
+	if listnames == nil {
+		listnames = append(listnames, defaultList)
 	}
 
-	io.WriteString(w, util.ToJSON(l))
-	//ts.collection.ToJSON())
+	lists, err := backend.GetAllLists(ts.db, user.Id)
+	if err != nil {
+		ts.handleError(err, "unable to retrieve lists", http.StatusInternalServerError, w)
+		return
+	}
+	io.WriteString(w, util.ToJSON(lists))
 }
 
 func (ts *todoserver) handleWebAdd(w http.ResponseWriter, r *http.Request) {
-	if err := ts.validateIncommingRequest(w, r); err != nil {
+
+	user, err := ts.validateIncomingUser(w, r)
+	if err != nil {
+		io.WriteString(w, "bad user bad bad bad")
 		return
 	}
 	io.WriteString(w, fmt.Sprintf(`<!DOCTYPE html><html><a href="getall">Get</a><br><br>
@@ -253,15 +237,17 @@ func (ts *todoserver) handleWebAdd(w http.ResponseWriter, r *http.Request) {
     <input type="text" name="item"><br>
     <input type="text" name="item"><br>
     <input type="text" name="item"><br>
+    <input type="hidden" name="user" value="%s">
     <input type="submit" value="Submit"><br>
   </form>
 </html>
-`, ts.host, ts.port))
+`, ts.host, ts.port, user.Username))
 }
 
 func (ts *todoserver) handleWebAddWithRedirect(w http.ResponseWriter, r *http.Request) {
-	user, err := ts.validateIncommingUser(w, r)
+	user, err := ts.validateIncomingUser(w, r)
 	if err != nil {
+		fmt.Printf("handleWebAddWithRedirect: err: %#v", err)
 		return
 	}
 	items := r.Form["item"]
@@ -277,48 +263,21 @@ func (ts *todoserver) handleWebAddWithRedirect(w http.ResponseWriter, r *http.Re
 
 //same as handleListRemove but with redirect
 func (ts *todoserver) handleWebRemoveWithRedirect(w http.ResponseWriter, r *http.Request) {
-	if err := ts.validateIncommingRequest(w, r); err != nil {
+
+	_, err := ts.validateIncomingUser(w, r)
+
+	if err != nil {
 		return
 	}
 
 	items := r.Form["item"]
-	for i := range items {
-		esc, err := url.QueryUnescape(items[i])
-		if err != nil {
-			log.Printf(util.ToJSON(map[string]interface{}{"msg": "error escaping web remove request", "err": err}))
-			continue
-		}
-		items[i] = esc
-	}
-
-	listNames := r.Form["list"]
-
-	err := ts.listRemoveItems(items, listNames)
+	err = ts.listRemoveItems(items)
 	if err != nil {
 		ts.handleError(err, "", http.StatusInternalServerError, w)
 		//return todo do we need this
 	}
+
 	http.Redirect(w, r, "/web/getall", http.StatusTemporaryRedirect)
-}
-
-func (ts *todoserver) checkPassword(w http.ResponseWriter, r *http.Request) bool {
-
-	err401 := fmt.Sprintf(`<html><body bgcolor="#000000" text="#FF0000"><center><h1>Unauthorized Request<h1><br><a href="http://%s:%d/web/login"><img src="http://%s:%d/wrongpassword.jpg"></a></center></body></html>`, ts.host, ts.port, ts.host, ts.port)
-	deny := func() { w.WriteHeader(http.StatusUnauthorized); io.WriteString(w, err401) }
-
-	cPass, err := r.Cookie(passwordCookieName)
-	if err != nil {
-		log.Println(map[string]interface{}{"err": err, "checkPassword": "didn't work"})
-		deny()
-		return false
-	} else {
-		pswd, err := base64.StdEncoding.DecodeString(cPass.Value)
-		if err != nil || string(pswd) != ts.pass {
-			deny()
-			return false
-		}
-	}
-	return true
 }
 
 func (ts *todoserver) handleWebLogin(w http.ResponseWriter, r *http.Request) {
@@ -333,35 +292,55 @@ func (ts *todoserver) handleWebLogin(w http.ResponseWriter, r *http.Request) {
 
 const passwordCookieName = "eWVrc2loV2hzYU1ydW9TZWVzc2VubmVUeXRpbGF1UWRuYXJCNy5vTmRsT2VtaXRkbE9zJ2xlaW5hRGtjYUoK"
 
-func parseUserCreds(r *http.Request) *auth.Creds {
-	ret := &auth.Creds{}
+type creds struct {
+	username  *string
+	password  *string
+	apikey    *string
+	sessionId *string
+}
+
+func (ts *todoserver) parseUserCreds(r *http.Request) creds {
+
+	ret := creds{}
 	u, p, a := r.Form["user"], r.Form["pass"], r.Form["apikey"]
 	if len(u) > 0 {
-		ret.Username = u[len(u)-1]
+		ret.username = &u[len(u)-1]
 	}
 	if len(p) > 0 {
-		ret.Password = p[len(p)-1]
+		ret.password = &p[len(p)-1]
 	}
 	if len(a) > 0 {
-		ret.Apikey = &a[len(a)-1]
+		ret.apikey = &a[len(a)-1]
+	}
+
+	if sid, err := r.Cookie(passwordCookieName); err == nil {
+		ret.sessionId = &sid.Value
+	} else {
+		ts.logError(err, nil)
 	}
 	return ret
 }
 
 func (ts *todoserver) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
-	if err := ts.validateIncommingRequest(w, r); err != nil {
+	if err := ts.validateIncomingRequest(w, r); err != nil {
 		return
 	}
-	user, err := auth.CreateUser(ts.db, parseUserCreds(r))
+	newUser := ts.parseUserCreds(r)
+	if newUser.username == nil || newUser.password == nil {
+		ts.handleError(fmt.Errorf("username and password must be specified"), "", http.StatusBadRequest, w)
+		return
+	}
+
+	user, err := auth.CreateUser(ts.db, *newUser.username, *newUser.password)
 	if err != nil {
 		ts.handleError(err, "jim make sure this err msg isn't too revealing i.e. gives creds out", http.StatusServiceUnavailable, w)
 		return
 	}
-	ts.handleSuccessWithInfo(map[string]interface{}{"userid": user.Id},w)
+	ts.handleSuccessWithInfo(map[string]interface{}{"userid": user.Id}, w)
 }
 
 func (ts *todoserver) handleAdminCreateApikey(w http.ResponseWriter, r *http.Request) {
-	user, err := ts.validateIncommingUser(w, r)
+	user, err := ts.validateIncomingUser(w, r)
 	if err != nil {
 		ts.handleError(err, "cannot validate yooooo", http.StatusBadRequest, w)
 		return
@@ -372,39 +351,51 @@ func (ts *todoserver) handleAdminCreateApikey(w http.ResponseWriter, r *http.Req
 		ts.handleError(err, "", http.StatusInternalServerError, w)
 		return
 	}
-	ts.handleSuccessWithInfo(map[string]interface{}{"apikey": apikey},w)
+	ts.handleSuccessWithInfo(map[string]interface{}{"apikey": apikey}, w)
 }
 
 func (ts *todoserver) handleWebLoginSubmit(w http.ResponseWriter, r *http.Request) {
 
-	if err := ts.validateIncommingRequest(w, r); err != nil {
-		return
-	}
-	// TODO items := r.Form["username"] ... only one user right now :-/
-	password := r.Form["pass"]
-	if len(password) != 1 {
-		w.WriteHeader(http.StatusInternalServerError)
-		io.WriteString(w, "no dice")
+	user, err := ts.validateIncomingUser(w, r)
+	if err != nil {
+		ts.deny(err, w, r)
 		return
 	}
 
-	//todo why are we getting: net/http: invalid byte '\n' in Cookie.Value; dropping invalid bytes
-	pswd := strings.Replace(password[0], "\n", "", -1)
+	sid, err := auth.CreateNewSessionID(ts.db, user)
+	if err != nil {
+		ts.deny(err, w, r)
+		return
+	}
 
 	http.SetCookie(w, &http.Cookie{
 		Name:    passwordCookieName,
 		Expires: time.Now().Add(time.Hour * time.Duration(720)),
-		Value:   strings.Replace(util.ToBase64(pswd), "\n", "", -1),
+		Value:   sid,
 	})
+
 	http.Redirect(w, r, "/web/getall", http.StatusTemporaryRedirect)
 }
 
+func (ts *todoserver) deny(err error, w http.ResponseWriter, r *http.Request) {
+	ts.logError(err, nil)
+	err401 := fmt.Sprintf(`<html><body bgcolor="#000000" text="#FF0000"><center><h1>Unauthorized Request<h1><br><a href="http://%s:%d/web/login"><img src="http://%s:%d/wrongpassword.jpg"></a></center></body></html>`, ts.host, ts.port, ts.host, ts.port)
+	w.WriteHeader(http.StatusUnauthorized)
+	io.WriteString(w, err401)
+}
+
+type q map[string]interface{}
+
 func (ts *todoserver) handleWebGetAll(w http.ResponseWriter, r *http.Request) {
-	if err := ts.validateIncommingRequest(w, r); err != nil || !ts.checkPassword(w, r) { //todo checkpassowrd
+
+	user, err := ts.validateIncomingUser(w, r)
+	if err != nil {
+		ts.deny(err, w, r)
 		return
 	}
 
 	html := "<!DOCTYPE html><html>"
+	html += user.Username
 	html += `<a href="add">Add</a><br><br>`
 	html += `<style>
 	table { width: 100%; font-family: Arial, Helvetica, sans-serif; color: #3C2915; }
@@ -417,22 +408,21 @@ func (ts *todoserver) handleWebGetAll(w http.ResponseWriter, r *http.Request) {
 	table td.edit { width: 5%; }
 	</style>`
 
-	listNames := ts.collection.Names()
-	sort.Strings(listNames)
+	lists, err := backend.GetAllLists(ts.db, user.Id)
+	if err != nil {
+		ts.logError(err, q{"whatgives": 3})
+		ts.deny(err, w, r) // todo make this nicer
+	}
 
-	for _, listName := range listNames {
-		lst := ts.collection.GetList(listName)
-		if lst == nil {
+	for _, lst := range lists {
+
+		if len(lst.Items) <= 0 {
+			//todo clean up lists
 			continue
 		}
 
-		items := lst.Items()
-		sort.Slice(items, func(i, j int) bool {
-			return true
-		})
-
-		list.SortItemsByCreatedAt(items)
-		html += fmt.Sprintf("<h2>%s</h2><hr><table>", listName)
+		list.SortItemsByCreatedAt(lst.Items)
+		html += fmt.Sprintf("<h2>%s</h2><hr><table>", lst.Title)
 		html += `<tr>
 				<th>Prio</th>
 				<th>Item</th>
@@ -440,12 +430,11 @@ func (ts *todoserver) handleWebGetAll(w http.ResponseWriter, r *http.Request) {
 				<th>Due</th>
 				<th>Edit</th>
 			</tr>`
-		for _, item := range items {
+		for _, itm := range lst.Items {
 
 			removeButton := fmt.Sprintf(`<form action="http://%s:%d/web/remove_redirect">
-			<input type="hidden" name="list" value="%s">
-			<input type="hidden" name="item" value="%s">
-			<input type="submit" value="rm"></form>`, ts.host, ts.port, url.QueryEscape(listName), url.QueryEscape(item.Item))
+			<input type="hidden" name="item" value="%d">
+			<input type="submit" value="rm"></form>`, ts.host, ts.port, itm.Id)
 
 			html += fmt.Sprintf(`<tr>
 						<td class="prio">%d</td>
@@ -454,7 +443,7 @@ func (ts *todoserver) handleWebGetAll(w http.ResponseWriter, r *http.Request) {
 						<td class="due">%s</td>
 						<td class="edit">%s</td>
 					    </tr>`,
-				item.Priority, item.Item, item.CreatedAtDateString(), item.DueDateString(), removeButton)
+				itm.Priority, itm.Item, itm.CreatedAtDateString(), itm.DueDateString(), removeButton)
 		}
 		html += "</table><br>"
 	}
@@ -462,28 +451,121 @@ func (ts *todoserver) handleWebGetAll(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, html)
 }
 
-func (ts *todoserver) validateIncommingUser(w http.ResponseWriter, r *http.Request) (*auth.User, error) {
+func (ts *todoserver) validateIncomingUser(w http.ResponseWriter, r *http.Request) (*auth.User, error) {
 
-	err := ts.validateIncommingRequest(w, r)
+	err := ts.validateIncomingRequest(w, r)
 	if err != nil {
 		//TODO can't do this because whatever function that calls this might call handleError
 		// validateIncommingRequest has already called handleError
 		return nil, err
 	}
 
-	user, err := auth.GetUser(ts.db, parseUserCreds(r))
+	var errs []error
 
-	if err != nil {
-		ts.handleError(err, "unable to validate user", http.StatusBadRequest, w)
-		log.Println("invalid user")
-		return nil, err
+	c := ts.parseUserCreds(r)
+
+	if c.sessionId != nil {
+		user, err := auth.GetUserBySessionId(ts.db, *c.sessionId)
+		if err == nil {
+			return user, nil
+		}
+		errs = append(errs, err)
 	}
-	log.Printf("user logged in: '%s' and err: %v\n", user.Username ,err)
 
-	return user, err
+	if c.apikey != nil {
+		user, err := auth.GetUserByApikey(ts.db, *c.apikey)
+		if err == nil {
+			return user, nil
+		}
+		errs = append(errs, err)
+	}
+
+	if c.username != nil && c.password != nil {
+		user, err := auth.GetUserByLogin(ts.db, *c.username, *c.password)
+		if err == nil {
+			return user, nil
+		}
+		errs = append(errs, err)
+	}
+
+	if len(errs) == 0 {
+		errs = append(errs, fmt.Errorf("no credentials were supplied"))
+	}
+
+	errString := ""
+	for _, e := range errs {
+		errString += e.Error() + ": "
+	}
+
+	err = fmt.Errorf(errString)
+
+	ts.handleError(err, "could not autheeeeeeeeeeenticate user", http.StatusBadRequest, w)
+	return nil, err
 }
 
-func (ts *todoserver) validateIncommingRequest(w http.ResponseWriter, r *http.Request) error {
+func (ts *todoserver) aliceParseIncomingRequest(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		err := r.ParseForm()
+		if err != nil {
+			ts.handleError(err, fmt.Sprintf("failed to parse form data: %s", err), http.StatusInternalServerError, w)
+		} else {
+			next.ServeHTTP(w, r)
+		}
+	})
+}
+
+func (ts *todoserver) aliceParseIncomingUser(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		var errs []error
+
+		c := ts.parseUserCreds(r)
+		if c.sessionId != nil {
+			user, err := auth.GetUserBySessionId(ts.db, *c.sessionId)
+			if err == nil {
+				r = r.WithContext(context.WithValue(r.Context(), "user", user))
+				next.ServeHTTP(w, r)
+				return
+			}
+			errs = append(errs, err)
+		}
+
+		if c.apikey != nil {
+			user, err := auth.GetUserByApikey(ts.db, *c.apikey)
+			if err == nil {
+				r = r.WithContext(context.WithValue(r.Context(), "user", user))
+				next.ServeHTTP(w, r)
+				return
+			}
+			errs = append(errs, err)
+		}
+
+		if c.username != nil && c.password != nil {
+			user, err := auth.GetUserByLogin(ts.db, *c.username, *c.password)
+			if err == nil {
+				r = r.WithContext(context.WithValue(r.Context(), "user", user))
+				next.ServeHTTP(w, r)
+				return
+			}
+			errs = append(errs, err)
+		}
+
+		if len(errs) == 0 {
+			errs = append(errs, fmt.Errorf("no credentials were supplied"))
+		}
+
+		errString := ""
+		for _, e := range errs {
+			errString += e.Error() + ": "
+		}
+
+		ts.handleError(fmt.Errorf(errString), "could not autheeeeeeeeeeenticate user", http.StatusBadRequest, w)
+		return
+
+	})
+}
+
+func (ts *todoserver) validateIncomingRequest(w http.ResponseWriter, r *http.Request) error {
 
 	err := r.ParseForm()
 	if err != nil {
@@ -502,6 +584,20 @@ func (ts *todoserver) validateIncommingRequest(w http.ResponseWriter, r *http.Re
 	return nil
 }
 
+func (ts *todoserver) logError(err error, details map[string]interface{}) {
+	if err == nil {
+		return
+	}
+
+	if details == nil {
+		details = make(map[string]interface{})
+	}
+
+	details["error"] = err
+
+	json := util.ToJSON(details)
+	log.Println(json)
+}
 func (ts *todoserver) handleError(err error, msg string, httpStatus int, w http.ResponseWriter) {
 	//todo make msg a map
 	w.WriteHeader(httpStatus)
@@ -510,17 +606,17 @@ func (ts *todoserver) handleError(err error, msg string, httpStatus int, w http.
 		m["message"] = msg
 	}
 	m["success"] = err == nil
-
-	if err != nil && httpStatus != http.StatusInternalServerError {
-		m["error"] = err
+	if err != nil {
+		m["error"] = err.Error()
 	}
 	json := util.ToJSON(m)
 	log.Println(json)
+	delete(m, "error")
 	io.WriteString(w, json)
 }
 
 func (ts *todoserver) handleSuccessWithInfo(m map[string]interface{}, w http.ResponseWriter) {
-	if m==nil{
+	if m == nil {
 		m = make(map[string]interface{})
 	}
 	json := util.ToJSON(m)
@@ -537,3 +633,10 @@ func (ts *todoserver) handleSuccess(msg string, w http.ResponseWriter) {
 	}
 	ts.handleSuccessWithInfo(m, w)
 }
+
+//func something(next http.Handler) http.Handler{
+//	return http.HandlerFunc(func(w http.ResponseWriter, r * http.Request){
+//
+//		next.ServeHTTP(w, r)
+//	})
+//}

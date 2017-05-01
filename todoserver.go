@@ -2,25 +2,20 @@ package todoserver
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
-	"time"
 
 	"database/sql"
+
 	"github.com/go-sql-driver/mysql"
-	"github.com/jimmyjames85/todoserver/list"
 	"github.com/jimmyjames85/todoserver/util"
+	"github.com/justinas/alice"
+	"github.com/jimmyjames85/todoserver/auth"
 )
 
 type todoserver struct {
-
-	//todo remove these
-	pass          string
-	saveFile      string
-	saveFrequency time.Duration
-	collection    list.Collection
+	pass string
 
 	host        string
 	port        int
@@ -30,16 +25,13 @@ type todoserver struct {
 	endpoints   map[string]func(http.ResponseWriter, *http.Request)
 }
 
-func NewTodoServer(host string, port int, pass, savefile string, resourceDir string, saveFrequency time.Duration, dsn mysql.Config) *todoserver {
+func NewTodoServer(host string, port int, pass, resourceDir string, dsn mysql.Config) *todoserver {
 
 	c := &todoserver{
-		host:          host,
-		port:          port,
-		pass:          pass,
-		saveFile:      savefile,
-		resourceDir:   resourceDir,
-		saveFrequency: saveFrequency,
-		collection:    list.NewCollection(),
+		host:        host,
+		port:        port,
+		pass:        pass,
+		resourceDir: resourceDir,
 	}
 
 	fmt.Printf("DSN: %s\n", dsn.FormatDSN())
@@ -48,56 +40,83 @@ func NewTodoServer(host string, port int, pass, savefile string, resourceDir str
 		log.Fatalf("could not open %v", err)
 	}
 	c.db = db
-	//rows, err := db.Query("select id, username, sessionid from users")
-	//if err != nil {
-	//	log.Fatalf("no query %v", err)
-	//}
-	//defer rows.Close()
-	//for rows.Next() {
-	//	id := sql.NullInt64{}
-	//	username := sql.NullString{}
-	//	sessionId := sql.NullString{}
-	//
-	//	err = rows.Scan(&id, &username, &sessionId)
-	//	if err != nil {
-	//		log.Fatal(err)
-	//	}
-	//
-	//	fmt.Printf("%#v %#v %#v\n", id, username, sessionId)
-	//}
-	//err = rows.Err()
-	//if err != nil {
-	//	log.Fatal(err)
-	//}
+
 	return c
 }
+//
+//func (ts *todoserver) withUser(w http.ResponseWriter, r *http.Request) http.HandlerFunc {
+//
+//	user, ok := r.Context().Value("user").(*auth.User)
+//	if !ok {
+//		ts.handleError(fmt.Errorf("no user in context %#v", user), "", http.StatusInternalServerError, w)
+//		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}) //noop
+//	}
+//
+//	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+//
+//	})
+//
+//
+//}
 
 // this function blocks
 func (ts *todoserver) Serve() error {
 
-	ts.endpoints = map[string]func(http.ResponseWriter, *http.Request){
-		"/add": ts.handleListAdd, //todo save on every modification (shrug)
-		//		"/get":                 ts.handleListGet,
-		"/v2/get": ts.handleListGetV2,
-		"/getall": ts.handleListGetAll,
-		"/remove": ts.handleListRemove,
+	commonHandlers := alice.New(ts.aliceParseIncomingRequest)
+	authenticatedHandlers := alice.New(ts.aliceParseIncomingRequest, ts.aliceParseIncomingUser)
+
+	newEndpoints := map[string]http.Handler{
+		"/admin/create/user":   commonHandlers.ThenFunc(ts.handleAdminCreateUser),
+		"/admin/create/apikey": commonHandlers.ThenFunc(ts.handleAdminCreateApikey),
+		"/add":                 authenticatedHandlers.ThenFunc(ts.handleListAdd),
+		"/get":                 authenticatedHandlers.ThenFunc(ts.handleListGet),
+		"/getall":              authenticatedHandlers.ThenFunc(ts.handleListGetAll),
+		"/remove":              authenticatedHandlers.ThenFunc(ts.handleListRemove),
+
+		"/web/login":        commonHandlers.ThenFunc(ts.handleWebLogin),
+		"/web/login_submit": authenticatedHandlers.ThenFunc(ts.handleWebLoginSubmit),
+		"/web/getall":       authenticatedHandlers.ThenFunc(ts.handleWebGetAll),
+
 		//		"/update":              ts.handleListUpdate,
-		"/web/add":             ts.handleWebAdd,
-		"/web/add_redirect":    ts.handleWebAddWithRedirect,
-		"/web/remove_redirect": ts.handleWebRemoveWithRedirect,
-		"/web/getall":          ts.handleWebGetAll,
-		"/web/login":           ts.handleWebLogin,
-		"/web/login_submit":    ts.handleWebLoginSubmit,
-		"/admin/create_user":   ts.handleAdminCreateUser,
-		"/admin/create_apikey": ts.handleAdminCreateApikey,
-		"/healthcheck":         ts.handleHealthcheck,
+		"/web/add":             authenticatedHandlers.ThenFunc(ts.handleWebAdd),
+		"/web/add_redirect":    authenticatedHandlers.ThenFunc(ts.handleWebAddWithRedirect),
+		"/web/remove_redirect": authenticatedHandlers.ThenFunc(ts.handleWebRemoveWithRedirect),
+
+		"/healthcheck": commonHandlers.ThenFunc(ts.handleHealthcheck),
 
 		//"/test":                     ts.handleTest,
 	}
 
-	for ep, fn := range ts.endpoints {
-		http.HandleFunc(ep, fn)
+	for ep, fn := range newEndpoints {
+		http.Handle(ep, fn)
 	}
+
+	//
+	//ts.endpoints = map[string]func(http.ResponseWriter, *http.Request){
+	//	"/admin/create/user":   ts.handleAdminCreateUser,
+	//	"/admin/create/apikey": ts.handleAdminCreateApikey,
+	//	"/add":                 ts.handleListAdd,
+	//	"/get":                 ts.handleListGet,
+	//	"/getall":              ts.handleListGetAll,
+	//	"/remove":              ts.handleListRemove,
+	//
+	//	"/web/login":        ts.handleWebLogin,
+	//	"/web/login_submit": ts.handleWebLoginSubmit,
+	//	"/web/getall":       ts.handleWebGetAll,
+	//
+	//	//		"/update":              ts.handleListUpdate,
+	//	"/web/add":             ts.handleWebAdd,
+	//	"/web/add_redirect":    ts.handleWebAddWithRedirect,
+	//	"/web/remove_redirect": ts.handleWebRemoveWithRedirect,
+	//
+	//	"/healthcheck": ts.handleHealthcheck,
+	//
+	//	//"/test":                     ts.handleTest,
+	//}
+	//
+	//for ep, fn := range ts.endpoints {
+	//	http.HandleFunc(ep, fn)
+	//}
 
 	// this should not be in the list of available endpoints
 	// this is just to serve anything inside resourceDir todo which should be configurable or resources need to be embedded in the binary
@@ -108,41 +127,5 @@ func (ts *todoserver) Serve() error {
 		log.Println(util.ToJSON(map[string]interface{}{"err": err, "info": "unable to serve files from resource directory"}))
 	}
 
-	if _, err := os.Stat(ts.saveFile); err == nil {
-		err := ts.loadFromDisk()
-		if err != nil {
-			log.Printf("unable to load from previous file: %s\n", ts.saveFile)
-		}
-	}
-
-	// save on a cron
-	go func() {
-		saveTimer := time.Tick(ts.saveFrequency)
-		for _ = range saveTimer {
-			err := ts.saveToDisk()
-			if err != nil {
-				log.Printf("error saving on a cron: %v\n", err)
-				return
-			}
-		}
-	}()
 	return http.ListenAndServe(fmt.Sprintf(":%d", ts.port), nil)
-}
-
-func (ts *todoserver) saveToDisk() error {
-	b := ts.collection.Serialize()
-	return ioutil.WriteFile(ts.saveFile, b, 0644)
-}
-
-func (ts *todoserver) loadFromDisk() error {
-	b, err := ioutil.ReadFile(ts.saveFile)
-	if err != nil {
-		return err
-	}
-	col, err := list.DeserializeCollection(b)
-	if err != nil {
-		return err
-	}
-	ts.collection = col
-	return err
 }

@@ -8,11 +8,10 @@ import (
 
 type Item struct {
 	Details   string `json:"details"`
-	Item      string `json:"item"` //Currently this is the primary key
-	Title     string `json:"title"`
+	Item      string `json:"item"`
 	Priority  int    `json:"priority"`
-	CreatedAt int64  `json:"created_at"`
-	DueDate   int64  `json:"due_date"`
+	CreatedAt string `json:"created_at"`
+	DueDate   string `json:"due_date"`
 	Id        int64  `json:"id"`
 }
 
@@ -21,14 +20,18 @@ func fmtUnixTime(sec int64) string {
 }
 
 func (i *Item) DueDateString() string {
-	if i.DueDate == 0 {
-		return ""
-	}
-	return fmtUnixTime(i.DueDate)
+	return i.DueDate
+	//TODO
+	//if i.DueDate == 0 {
+	//	return ""
+	//}
+	//return fmtUnixTime(i.DueDate)
 }
 
 func (i *Item) CreatedAtDateString() string {
-	return fmtUnixTime(i.CreatedAt)
+	return i.CreatedAt
+	// TODO
+	// return fmtUnixTime(i.CreatedAt)
 }
 
 func SortItemsByItem(items []Item) {

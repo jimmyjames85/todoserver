@@ -4,74 +4,93 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"fmt"
-	"strings"
-
 	"io"
+	"strings"
 
 	"github.com/jimmyjames85/todoserver/util"
 )
 
-type Creds struct {
-	Username  string
-	Password  string
-	Apikey    *string
-	SessionId *string
-}
-
 type User struct {
-	Id       int64  `json:"id"`
-	Username string `json:"user"`
-	creds    Creds
+	Id        int64  `json:"id"`
+	Username  string `json:"user"`
+	password  string
+	apikey    *string
+	sessionId *string
 }
 
-func GetUser(db *sql.DB, c *Creds) (*User, error) {
-	user := &User{}
-	fmt.Printf("%v %v %v %v \n", c.Username, c.Password, c.Apikey, c.SessionId)
-	row := db.QueryRow("select id , username , password , apikey , sessionid from users where username=? and password=?", c.Username, c.Password)
-	var apikey, sessionId sql.NullString
-	err := row.Scan(&user.Id, &user.Username, &user.creds.Password, &apikey, &sessionId)
+func GetUserBySessionId(db *sql.DB, sessionId string) (*User, error) {
+	row := db.QueryRow("select id, username , password , apikey from users where sessionid=?", sessionId)
+	var apikey sql.NullString
+	ret := &User{sessionId: &sessionId}
+	err := row.Scan(&ret.Id, &ret.Username, &ret.password, &apikey)
 	if err != nil {
-		fmt.Printf("aw man %v\n", err)
-		if c.Apikey != nil{
-			row := db.QueryRow("select id , username , password , apikey , sessionid from users where apikey=?", *c.Apikey)
-			err := row.Scan(&user.Id, &user.Username, &user.creds.Password, &apikey, &sessionId)
-			if err != nil {
-				fmt.Printf("again!? %v\n", err)
-				return nil, err
-			}
-		}
+		return nil, err
 	}
-
-	user.creds.Username = user.Username
-
 	if apikey.Valid {
-		user.creds.Apikey = &apikey.String
+		ret.apikey = &apikey.String
+	}
+	return ret, nil
+}
+
+func GetUserByApikey(db *sql.DB, apikey string) (*User, error) {
+	row := db.QueryRow("select id, username , password , sessionid from users where apikey=?", apikey)
+	var sessionId sql.NullString
+	ret := &User{sessionId: &apikey}
+	err := row.Scan(&ret.Id, &ret.Username, &ret.password, &sessionId)
+	if err != nil {
+		return nil, err
 	}
 	if sessionId.Valid {
-		user.creds.SessionId = &sessionId.String
+		ret.sessionId = &sessionId.String
 	}
-	return user, err
+	return ret, nil
 }
 
-func CreateNewApikey(db *sql.DB, user *User) (string, error) {
+func GetUserByLogin(db *sql.DB, username, password string) (*User, error) {
 
-	user, err := GetUser(db, &user.creds)
+	var sessionId, apikey sql.NullString
+	ret := &User{password: password, Username: username}
+
+	row := db.QueryRow("select id, sessionid, apikey from users where username=? and password=?", username, password)
+	err := row.Scan(&ret.Id, &sessionId, &apikey)
 	if err != nil {
-		fmt.Printf("dafuq")
-		return "", err
+		return nil, err
 	}
+	if sessionId.Valid {
+		ret.sessionId = &sessionId.String
+	}
+	if apikey.Valid {
+		ret.apikey = &apikey.String
+	}
+	return ret, nil
+}
 
-	apikey, err := newUUID()
-
+func CreateNewSessionID(db *sql.DB, user *User) (string, error) {
+	sessionID, err := newUUID()
 	if err != nil {
 		fmt.Printf("uuid creation err\n")
 		return "", err
 	}
-	fmt.Printf("apikeyUUID: %s\n", apikey)
+	sessionID = fmt.Sprintf("TD.%s.%s", util.ToBase64(sessionID), util.ToBase64(fmt.Sprintf("%d", user.Id)))
+	sessionID = strings.Replace(sessionID, "=", "", -1)
+	sessionID = strings.Replace(sessionID, "\n", "", -1)
+
+	_, err = db.Exec("UPDATE users SET sessionid=? WHERE username=? AND id=?", sessionID, user.Username, user.Id)
+	if err != nil {
+		return "", err
+	}
+	return sessionID, nil
+}
+func CreateNewApikey(db *sql.DB, user *User) (string, error) {
+
+	apikey, err := newUUID()
+	if err != nil {
+		fmt.Printf("uuid creation err\n")
+		return "", err
+	}
 	apikey = fmt.Sprintf("TD.%s.%s", util.ToBase64(apikey), util.ToBase64(fmt.Sprintf("%d", user.Id)))
 	apikey = strings.Replace(apikey, "=", "", -1)
-	apikey = strings.Replace(apikey, "\n", "" ,-1)
-	fmt.Printf("apikey: %s\n", apikey)
+	apikey = strings.Replace(apikey, "\n", "", -1)
 
 	_, err = db.Exec("UPDATE users SET apikey=? WHERE username=? AND id=?", apikey, user.Username, user.Id)
 	if err != nil {
@@ -81,17 +100,15 @@ func CreateNewApikey(db *sql.DB, user *User) (string, error) {
 	return apikey, nil
 }
 
-func CreateUser(db *sql.DB, new *Creds) (*User, error) {
+func CreateUser(db *sql.DB, username, password string) (*User, error) {
 
-	_, err := db.Exec("INSERT INTO users (username, password) VALUES (?, ?)", new.Username, new.Password)
+	_, err := db.Exec("INSERT INTO users (username, password) VALUES (?, ?)", username, password)
 	if err != nil {
 		return nil, err
 	}
 
-
-	fmt.Printf("insert was a succes\n")
 	// TODO what if the insert works, but getuser returns err?
-	return GetUser(db, new)
+	return GetUserByLogin(db, username, password)
 }
 
 // newUUID generates a random UUID according to RFC 4122

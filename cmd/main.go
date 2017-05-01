@@ -3,10 +3,10 @@ package main
 import (
 	"encoding/base64"
 	"log"
-	"time"
 
 	"database/sql"
 	"fmt"
+
 	"github.com/go-sql-driver/mysql"
 	"github.com/jimmyjames85/todoserver"
 	"github.com/kelseyhightower/envconfig"
@@ -52,7 +52,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	ts := todoserver.NewTodoServer(c.Host, c.Port, string(pass), c.SaveFileloc, c.ResourceDir, time.Duration(c.SaveFrequencySec)*time.Second, dsn)
+	ts := todoserver.NewTodoServer(c.Host, c.Port, string(pass), c.ResourceDir, dsn)
 	err = ts.Serve()
 	if err != nil {
 		log.Fatal(err)

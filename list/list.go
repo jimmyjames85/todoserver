@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jimmyjames85/todoserver/util"
+	"fmt"
 )
 
 type List interface {
@@ -28,7 +29,7 @@ type List2 struct {
 	UserId    int64  `json:"user_id"`
 	Title     string `json:"title"`
 	Priority  int64  `json:"priority"`
-	CreatedAt int64  `json:"created_at"`
+	CreatedAt string  `json:"created_at"`
 	Items     []Item `json:"items"`
 }
 
@@ -60,7 +61,8 @@ func NewList() list {
 func (l list) AddItems(items ...string) {
 	for _, itm := range items {
 		if _, ok := l.data[itm]; !ok && len(itm) > 0 {
-			l.data[itm] = Item{CreatedAt: time.Now().Unix(), Item: itm}
+			l.data[itm] = Item{CreatedAt: fmt.Sprintf("%s",time.Now().Unix()), Item: itm}
+			// TODO l.data[itm] = Item{CreatedAt: time.Now().Unix(), Item: itm}
 		}
 	}
 }
