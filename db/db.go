@@ -50,17 +50,16 @@ func AddItems(db *sql.DB, userid int64, listName string, items ...string) error 
 	return err
 }
 
-func RemoveItems(db *sql.DB, ids ...int64) error {
+func RemoveItems(userid int64, db *sql.DB, ids ...int64) error {
 	if len(ids) == 0 {
 		return nil
 	}
-
 	// TODO how do I pass in ids... as a variadic slice of int64 to db.Exec that expects a variadic slice of interface{}
 	idsInterfaces := make([]interface{}, len(ids))
 	for i, v := range ids {
 		idsInterfaces[i] = v
 	}
-	_, err := db.Exec(fmt.Sprintf("DELETE FROM items WHERE id=?%s",strings.Repeat(" OR id=?", len(ids)-1)), idsInterfaces...);
+	_, err := db.Exec(fmt.Sprintf("DELETE FROM items WHERE userid=? AND WHERE id=?%s", userid, strings.Repeat(" OR id=?", len(ids)-1)), idsInterfaces...)
 	return err
 }
 
@@ -74,7 +73,7 @@ func GetAllLists(db *sql.DB, userid int64) ([]list.List2, error) {
 		return ret, err
 
 	}
-	for rows.Next(){
+	for rows.Next() {
 		var listId, prio int64
 		var listTitle, createdAt string
 		err := rows.Scan(&listId, &prio, &createdAt, &listTitle)
@@ -93,17 +92,17 @@ func GetAllLists(db *sql.DB, userid int64) ([]list.List2, error) {
 		ret = append(ret, list)
 	}
 	err = rows.Err()
-	if err !=nil{
+	if err != nil {
 		fmt.Printf("here3 %v\n", err)
 		return ret, err
 	}
 	err = rows.Close()
-	if err !=nil{
+	if err != nil {
 		fmt.Printf("here4 %v\n", err)
 		return ret, err
 	}
 
-	for i, _ := range ret{
+	for i, _ := range ret {
 
 		rows, err := db.Query("select id, details, item, priority, created_at, due_date from items where userid=? and listid=?", userid, ret[i].Id)
 		if err != nil {

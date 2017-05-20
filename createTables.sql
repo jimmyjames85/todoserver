@@ -1,7 +1,7 @@
 -- DELETE FROM mysql.user WHERE user='todouser'; FLUSH PRIVILEGES;
-CREATE USER 'todouser'@'localhost' IDENTIFIED BY 'todopswd'; FLUSH PRIVILEGES;
+CREATE USER 'todouser'@'localhost' IDENTIFIED BY 'todopass'; FLUSH PRIVILEGES;
 GRANT ALL PRIVILEGES ON *.* TO 'todouser'@'localhost'; FLUSH PRIVILEGES;
-CREATE USER 'todouser'@'%' IDENTIFIED BY 'todopswd'; FLUSH PRIVILEGES;
+CREATE USER 'todouser'@'%' IDENTIFIED BY 'todopass'; FLUSH PRIVILEGES;
 GRANT ALL PRIVILEGES ON *.* TO 'todouser'@'%'; FLUSH PRIVILEGES;
 
 CREATE DATABASE todolists;

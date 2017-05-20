@@ -20,7 +20,7 @@ type config struct {
 	SaveFrequencySec int    `envconfig:"SAVE_FREQUENCY_SEC" required:"false" default:"60"`   // how often to save the to-do list
 	ResourceDir      string `envconfig:"RESOURCE_DIR" required:"false" default:""`           // where static resources reside
 	DBuser           string `envconfig:"DB_USER" required "false" default:"todouser"`
-	DBPswd           string `envconfig:"DB_PSWD" required "false" default:"todopswd"`
+	DBPswd           string `envconfig:"DB_PASS" required "false" default:"todopass"`
 	DBHost           string `envconfig:"DB_HOST" required "false" default:"localhost"`
 	DBPort           int    `envconfig:"DB_PORT" required "false" default:"3306"`
 	DBName           string `envconfig:"DB_NAME" required "false" default:"todolists"`
@@ -42,17 +42,18 @@ func main() {
 	dsn.DBName = c.DBName
 	dsn.Net = "tcp"
 
-	fmt.Printf("dbname: %s %s\n", dsn.DBName, c.DBName)
+	log.Printf("dbname: %s %s\n", dsn.DBName, c.DBName)
 	db, err := sql.Open("mysql", dsn.FormatDSN())
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("%v\nDid you set environment variables?\n", err)
 	}
 	defer db.Close()
 	if err = db.Ping(); err != nil {
-		log.Fatal(err)
+		log.Fatalf("%v\nDid you set environment variables?\n", err)
 	}
-
 	ts := todoserver.NewTodoServer(c.Host, c.Port, string(pass), c.ResourceDir, dsn)
+
+	log.Printf("listening on %d\n", c.Port)
 	err = ts.Serve()
 	if err != nil {
 		log.Fatal(err)

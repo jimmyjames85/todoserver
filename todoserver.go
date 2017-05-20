@@ -11,7 +11,6 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/jimmyjames85/todoserver/util"
 	"github.com/justinas/alice"
-	"github.com/jimmyjames85/todoserver/auth"
 )
 
 type todoserver struct {
@@ -22,7 +21,7 @@ type todoserver struct {
 	resourceDir string
 	mysqlCfg    mysql.Config
 	db          *sql.DB
-	endpoints   map[string]func(http.ResponseWriter, *http.Request)
+	endpoints   []string //map[string]func(http.ResponseWriter, *http.Request) todo remove this COMMENT if []string works or after if cur date is after 6/19/2017
 }
 
 func NewTodoServer(host string, port int, pass, resourceDir string, dsn mysql.Config) *todoserver {
@@ -43,6 +42,7 @@ func NewTodoServer(host string, port int, pass, resourceDir string, dsn mysql.Co
 
 	return c
 }
+
 //
 //func (ts *todoserver) withUser(w http.ResponseWriter, r *http.Request) http.HandlerFunc {
 //
@@ -65,17 +65,18 @@ func (ts *todoserver) Serve() error {
 	commonHandlers := alice.New(ts.aliceParseIncomingRequest)
 	authenticatedHandlers := alice.New(ts.aliceParseIncomingRequest, ts.aliceParseIncomingUser)
 
-	newEndpoints := map[string]http.Handler{
+	endpoints := map[string]http.Handler{
 		"/admin/create/user":   commonHandlers.ThenFunc(ts.handleAdminCreateUser),
-		"/admin/create/apikey": commonHandlers.ThenFunc(ts.handleAdminCreateApikey),
+		"/admin/create/apikey": authenticatedHandlers.ThenFunc(ts.handleAdminCreateApikey),
 		"/add":                 authenticatedHandlers.ThenFunc(ts.handleListAdd),
 		"/get":                 authenticatedHandlers.ThenFunc(ts.handleListGet),
 		"/getall":              authenticatedHandlers.ThenFunc(ts.handleListGetAll),
 		"/remove":              authenticatedHandlers.ThenFunc(ts.handleListRemove),
 
-		"/web/login":        commonHandlers.ThenFunc(ts.handleWebLogin),
-		"/web/login_submit": authenticatedHandlers.ThenFunc(ts.handleWebLoginSubmit),
-		"/web/getall":       authenticatedHandlers.ThenFunc(ts.handleWebGetAll),
+		"/web/login":         commonHandlers.ThenFunc(ts.handleWebLogin),
+		"/web/login_submit":  authenticatedHandlers.ThenFunc(ts.handleWebLoginSubmit),
+		"/web/logout_submit": authenticatedHandlers.ThenFunc(ts.handleWebLogoutSubmit),
+		"/web/getall":        authenticatedHandlers.ThenFunc(ts.handleWebGetAll),
 
 		//		"/update":              ts.handleListUpdate,
 		"/web/add":             authenticatedHandlers.ThenFunc(ts.handleWebAdd),
@@ -84,11 +85,15 @@ func (ts *todoserver) Serve() error {
 
 		"/healthcheck": commonHandlers.ThenFunc(ts.handleHealthcheck),
 
-		//"/test":                     ts.handleTest,
+		// "/test": commonHandlers.ThenFunc(ts.handleTest),
+
 	}
 
-	for ep, fn := range newEndpoints {
+	//TODO look at noodle and gorillamux
+
+	for ep, fn := range endpoints {
 		http.Handle(ep, fn)
+		ts.endpoints = append(ts.endpoints, ep)
 	}
 
 	//

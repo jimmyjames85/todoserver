@@ -65,6 +65,11 @@ func GetUserByLogin(db *sql.DB, username, password string) (*User, error) {
 	return ret, nil
 }
 
+func ClearSessionID(db *sql.DB, user *User) (error) {
+	_, err := db.Exec("UPDATE users set sessionid=NULL WHERE username=? AND id=?", user.Username, user.Id)
+	return err
+}
+
 func CreateNewSessionID(db *sql.DB, user *User) (string, error) {
 	sessionID, err := newUUID()
 	if err != nil {
