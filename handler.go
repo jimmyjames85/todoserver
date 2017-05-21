@@ -168,6 +168,7 @@ func (ts *todoserver) handleListGetAll(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, ToJSON(lists))
 }
 
+// todo this should be served on a different port
 func (ts *todoserver) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 
 	u, p, a := r.Form["user"], r.Form["pass"], r.Form["adminkey"]
@@ -195,7 +196,25 @@ func (ts *todoserver) handleAdminCreateUser(w http.ResponseWriter, r *http.Reque
 	io.WriteString(w, qm{"userid": user.ID}.toJSON())
 }
 
-func (ts *todoserver) handleAdminCreateApikey(w http.ResponseWriter, r *http.Request) {
+func (ts *todoserver) handleUserCreateSessionID(w http.ResponseWriter, r *http.Request) {
+
+	user := ts.mustGetUser(w, r)
+	if user == nil {
+		return
+	}
+
+	//todo detect if creds are invalid vs internal error and return http.StatusUnauthorized
+	sid, err := auth.CreateNewSessionID(ts.db, user)
+	if err != nil {
+		ts.handleInternalServerError(w, err, nil)
+		return
+	}
+
+	// TODO duplicate code? If you change e.g. session_id to sessionID then you have to update web/handler.go:submitLogin to know it is sessionID
+	io.WriteString(w, qm{"ok":true,"session_id":sid}.String())
+
+}
+func (ts *todoserver) handleUserCreateApikey(w http.ResponseWriter, r *http.Request) {
 
 	user := ts.mustGetUser(w, r)
 	if user == nil {
@@ -284,22 +303,7 @@ func (ts *todoserver) aliceParseIncomingUser(next http.Handler) http.Handler {
 	})
 }
 
-//func (ts *todoserver) logError(err error, details map[string]interface{}) {
-//	if err == nil {
-//		return
-//	}
-//
-//	if details == nil {
-//		details = make(map[string]interface{})
-//	}
-//
-//	details["error"] = err
-//
-//	json := util.ToJSON(details)
-//	log.Println(json)
-//}
-
-// this does not log
+// handleCustomerError does not log
 func (ts *todoserver) handleCustomerError(w http.ResponseWriter, httpCode int, customerResponse qm) {
 	w.WriteHeader(httpCode)
 	if customerResponse != nil {
@@ -307,11 +311,11 @@ func (ts *todoserver) handleCustomerError(w http.ResponseWriter, httpCode int, c
 	}
 }
 
-// this logs
+// handleInternalServerError logs
 func (ts *todoserver) handleInternalServerError(w http.ResponseWriter, err error, customerResponse qm) {
 
 	pc, file, line, ok := runtime.Caller(1) // 0 is _this_ func. 1 is one up the stack
-	logErr := qm{"error": err.Error(), "customer_response": customerResponse, "caller": qm{"pc": pc, "file": file, "line": line, "ok": ok}}
+	logErr := qm{"ok":false, "error": err.Error(), "customer_response": customerResponse, "caller": qm{"pc": pc, "file": file, "line": line, "ok": ok}}
 	log.Println(logErr.toJSON())
 
 	w.WriteHeader(http.StatusInternalServerError)

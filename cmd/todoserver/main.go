@@ -37,16 +37,15 @@ func main() {
 	dsn.DBName = c.DBName
 	dsn.Net = "tcp"
 
-	log.Printf("dbname: %s %s\n", dsn.DBName, c.DBName)
 	db, err := sql.Open("mysql", dsn.FormatDSN())
 	if err != nil {
-		log.Fatalf("%v\nDid you set environment variables?\n", err)
+		log.Fatalf("%v: Did you set environment variables?\n", err.Error())
 	}
 	defer db.Close()
 	if err = db.Ping(); err != nil {
-		log.Fatalf("%v\nDid you set environment variables?\n", err)
+		log.Fatalf("%v: Did you set environment variables?\n", err.Error())
 	}
-	ts := todoserver.NewTodoServer(c.Host, c.Port, c.AdminKey, c.ResourceDir, dsn)
+	ts := todoserver.NewServer(c.Host, c.Port, c.AdminKey, c.ResourceDir, dsn)
 
 	log.Printf("listening on %d\n", c.Port)
 	err = ts.Serve()
