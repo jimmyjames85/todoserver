@@ -1,9 +1,8 @@
-package list
+package todo
 
 import (
 	"sort"
 	"strings"
-	"time"
 )
 
 type Item struct {
@@ -15,23 +14,13 @@ type Item struct {
 	Id        int64  `json:"id"`
 }
 
-func fmtUnixTime(sec int64) string {
-	return time.Unix(sec, 0).Format(time.ANSIC)
-}
-
-func (i *Item) DueDateString() string {
-	return i.DueDate
-	//TODO
-	//if i.DueDate == 0 {
-	//	return ""
-	//}
-	//return fmtUnixTime(i.DueDate)
-}
-
-func (i *Item) CreatedAtDateString() string {
-	return i.CreatedAt
-	// TODO
-	// return fmtUnixTime(i.CreatedAt)
+type List struct {
+	Id        int64  `json:"id"`
+	UserId    int64  `json:"user_id"`
+	Title     string `json:"title"`
+	Priority  int64  `json:"priority"`
+	CreatedAt string `json:"created_at"`
+	Items     []Item `json:"items"`
 }
 
 func SortItemsByItem(items []Item) {

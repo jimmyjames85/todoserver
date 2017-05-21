@@ -3,15 +3,14 @@ package auth
 import (
 	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"strings"
-
-	"github.com/jimmyjames85/todoserver/util"
 )
 
 type User struct {
-	Id        int64  `json:"id"`
+	ID        int64  `json:"id"`
 	Username  string `json:"user"`
 	password  string
 	apikey    *string
@@ -22,7 +21,7 @@ func GetUserBySessionId(db *sql.DB, sessionId string) (*User, error) {
 	row := db.QueryRow("select id, username , password , apikey from users where sessionid=?", sessionId)
 	var apikey sql.NullString
 	ret := &User{sessionId: &sessionId}
-	err := row.Scan(&ret.Id, &ret.Username, &ret.password, &apikey)
+	err := row.Scan(&ret.ID, &ret.Username, &ret.password, &apikey)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +35,7 @@ func GetUserByApikey(db *sql.DB, apikey string) (*User, error) {
 	row := db.QueryRow("select id, username , password , sessionid from users where apikey=?", apikey)
 	var sessionId sql.NullString
 	ret := &User{sessionId: &apikey}
-	err := row.Scan(&ret.Id, &ret.Username, &ret.password, &sessionId)
+	err := row.Scan(&ret.ID, &ret.Username, &ret.password, &sessionId)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +51,7 @@ func GetUserByLogin(db *sql.DB, username, password string) (*User, error) {
 	ret := &User{password: password, Username: username}
 
 	row := db.QueryRow("select id, sessionid, apikey from users where username=? and password=?", username, password)
-	err := row.Scan(&ret.Id, &sessionId, &apikey)
+	err := row.Scan(&ret.ID, &sessionId, &apikey)
 	if err != nil {
 		return nil, err
 	}
@@ -65,22 +64,25 @@ func GetUserByLogin(db *sql.DB, username, password string) (*User, error) {
 	return ret, nil
 }
 
-func ClearSessionID(db *sql.DB, user *User) (error) {
-	_, err := db.Exec("UPDATE users set sessionid=NULL WHERE username=? AND id=?", user.Username, user.Id)
+func ClearSessionID(db *sql.DB, user *User) error {
+	_, err := db.Exec("UPDATE users set sessionid=NULL WHERE username=? AND id=?", user.Username, user.ID)
 	return err
 }
 
 func CreateNewSessionID(db *sql.DB, user *User) (string, error) {
 	sessionID, err := newUUID()
 	if err != nil {
-		fmt.Printf("uuid creation err\n")
-		return "", err
+		return "", fmt.Errorf("uuid creation err: %v", err)
 	}
-	sessionID = fmt.Sprintf("TD.%s.%s", util.ToBase64(sessionID), util.ToBase64(fmt.Sprintf("%d", user.Id)))
+
+	s64 := base64.StdEncoding.EncodeToString([]byte(sessionID))
+	uid64 := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%d", user.ID)))
+
+	sessionID = fmt.Sprintf("TD.%s.%s", s64, uid64)
 	sessionID = strings.Replace(sessionID, "=", "", -1)
 	sessionID = strings.Replace(sessionID, "\n", "", -1)
 
-	_, err = db.Exec("UPDATE users SET sessionid=? WHERE username=? AND id=?", sessionID, user.Username, user.Id)
+	_, err = db.Exec("UPDATE users SET sessionid=? WHERE username=? AND id=?", sessionID, user.Username, user.ID)
 	if err != nil {
 		return "", err
 	}
@@ -90,14 +92,17 @@ func CreateNewApikey(db *sql.DB, user *User) (string, error) {
 
 	apikey, err := newUUID()
 	if err != nil {
-		fmt.Printf("uuid creation err\n")
-		return "", err
+		return "", fmt.Errorf("uuid creation err: %v", err)
 	}
-	apikey = fmt.Sprintf("TD.%s.%s", util.ToBase64(apikey), util.ToBase64(fmt.Sprintf("%d", user.Id)))
+
+	api64 := base64.StdEncoding.EncodeToString([]byte(apikey))
+	uid64 := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%d", user.ID)))
+
+	apikey = fmt.Sprintf("TD.%s.%s", api64, uid64)
 	apikey = strings.Replace(apikey, "=", "", -1)
 	apikey = strings.Replace(apikey, "\n", "", -1)
 
-	_, err = db.Exec("UPDATE users SET apikey=? WHERE username=? AND id=?", apikey, user.Username, user.Id)
+	_, err = db.Exec("UPDATE users SET apikey=? WHERE username=? AND id=?", apikey, user.Username, user.ID)
 	if err != nil {
 		return "", err
 	}
@@ -118,6 +123,8 @@ func CreateUser(db *sql.DB, username, password string) (*User, error) {
 
 // newUUID generates a random UUID according to RFC 4122
 func newUUID() (string, error) {
+	// copy pasta from a google search
+	// https://play.golang.org/p/uEIKweC-kp
 	uuid := make([]byte, 16)
 	n, err := io.ReadFull(rand.Reader, uuid)
 	if n != len(uuid) || err != nil {
